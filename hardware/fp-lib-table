@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "AtlasScientific")(type "KiCad")(uri "${KIPRJMOD}/AtlasScientific.pretty")(options "")(descr ""))
+)

@@ -1,0 +1,8 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "TMUX6236")(type "KiCad")(uri "${KIPRJMOD}/TMUX6236.kicad_sym")(options "")(descr ""))
+  (lib (name "AtlasScientific")(type "KiCad")(uri "${KIPRJMOD}/AtlasScientific.kicad_sym")(options "")(descr ""))
+  (lib (name "SI8600")(type "KiCad")(uri "${KIPRJMOD}/SI8600.kicad_sym")(options "")(descr ""))
+  (lib (name "TPS631000")(type "KiCad")(uri "${KIPRJMOD}/TPS631000.kicad_sym")(options "")(descr ""))
+  (lib (name "PCIEx4")(type "KiCad")(uri "${KIPRJMOD}/PCIEx4.kicad_sym")(options "")(descr ""))
+)
