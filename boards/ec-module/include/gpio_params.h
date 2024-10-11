@@ -31,9 +31,7 @@ extern "C" {
  */
 static const saul_gpio_params_t saul_gpio_params[] = {
     {.name = "BOOST_EN", .pin = BOOST_EN_PIN, .mode = GPIO_OUT},
-    {.name = "PROBE_EN", .pin = PRB_EN_PIN, .mode = GPIO_OUT},
     {.name = "PROBE_SEL_1", .pin = PRB_SEL_1_PIN, .mode = GPIO_OUT},
-    {.name = "PROBE_SEL_2", .pin = PRB_SEL_2_PIN, .mode = GPIO_OUT},
 };
 
 #ifdef __cplusplus

@@ -1,0 +1,2 @@
+ifneq (,$(filter ezoec,$(USEMODULE))) 
+endif

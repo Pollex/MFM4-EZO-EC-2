@@ -3,6 +3,7 @@ APPLICATION = default
 
 BOARD ?= ec-module
 EXTERNAL_BOARD_DIRS ?= $(CURDIR)/boards
+EXTERNAL_MODULE_DIRS += modules
 
 # This has to be the absolute path to the RIOT base directory:
 RIOTBASE ?= $(CURDIR)/../RIOT
@@ -10,7 +11,7 @@ RIOTBASE ?= $(CURDIR)/../RIOT
 DEVELHELP ?= 1
 
 # we want to use SAUL:
-USEMODULE += saul_default
+USEMODULE += saul_default ezoec
 # include the shell:
 USEMODULE += shell shell_cmds_default ps
 # additional modules for debugging:
