@@ -5,4 +5,6 @@
   (lib (name "SI8600")(type "KiCad")(uri "${KIPRJMOD}/SI8600.kicad_sym")(options "")(descr ""))
   (lib (name "TPS631000")(type "KiCad")(uri "${KIPRJMOD}/TPS631000.kicad_sym")(options "")(descr ""))
   (lib (name "PCIEx4")(type "KiCad")(uri "${KIPRJMOD}/PCIEx4.kicad_sym")(options "")(descr ""))
+  (lib (name "USBLC6")(type "KiCad")(uri "${KIPRJMOD}/USBLC6-2P6/USBLC6-2P6.kicad_sym")(options "")(descr ""))
+  (lib (name "CON-SMA-EDGE-S")(type "KiCad")(uri "${KIPRJMOD}/CON-SMA-EDGE-S/CON-SMA-EDGE-S.kicad_sym")(options "")(descr ""))
 )
