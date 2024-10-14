@@ -11,13 +11,14 @@ RIOTBASE ?= $(CURDIR)/../RIOT
 DEVELHELP ?= 1
 
 # we want to use SAUL:
-USEMODULE += saul_default ezoec
+USEMODULE += saul_default
 # include the shell:
 USEMODULE += shell shell_cmds_default ps
 # additional modules for debugging:
 USEMODULE += stdio_uart ztimer ztimer_msec
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart
 
+USEMODULE += ezoec ds18 
 # Change this to 0 show compiler invocation lines by default:
 QUIET ?= 1
 
