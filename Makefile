@@ -16,7 +16,7 @@ USEMODULE += saul_default
 USEMODULE += shell shell_cmds_default ps
 # additional modules for debugging:
 USEMODULE += stdio_uart ztimer ztimer_msec
-FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart
+FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom
 
 USEMODULE += ezoec ds18 
 # Change this to 0 show compiler invocation lines by default:
