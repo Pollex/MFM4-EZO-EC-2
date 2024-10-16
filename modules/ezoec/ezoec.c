@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 #define ASSERT_OK_TIMEOUT 500
@@ -17,6 +17,7 @@
 #define DEV UART_DEV(ec->params.uart)
 
 void _write(ezoec_t *ec, const char *format, ...);
+void _clear_rb(ezoec_t *ec);
 int assert_ok(ezoec_t *ec);
 char *_intd(uint8_t k, uint8_t precision);
 int set_k(ezoec_t *ec);
@@ -40,6 +41,7 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     ringbuffer_init(&ec->rx_ringbuffer, ec->rx_buffer, sizeof(ec->rx_buffer));
 
     // Disable continuous mode
+    _clear_rb(ec);
     _write(ec, "C,0\r");
     result = assert_ok(ec);
     if (result < 0) {
@@ -60,11 +62,13 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
 }
 
 int ezoec_set_baud(ezoec_t *ec, unsigned int baud) {
+    _clear_rb(ec);
     _write(ec, "Baud,%d\r", baud);
     return assert_ok(ec);
 }
 
 int ezoec_read(ezoec_t *ec, int temperature, uint32_t *out) {
+    _clear_rb(ec);
     _write(ec, "RT,%s\r", _intd(temperature, 1));
 
     // Read measurements result line
@@ -128,6 +132,10 @@ int rx_read_line(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
 
         if (data == '\r') {
             result = ptr - buf;
+#if ENABLE_DEBUG
+            fwrite(buf, result, 1, stdout);
+            putc('\n', stdout);
+#endif
             break;
         }
 
@@ -164,6 +172,7 @@ int assert_ok(ezoec_t *ec) {
 int set_k(ezoec_t *ec) {
     uint8_t k = ec->params.k_value;
     DEBUG("[%s]: Setting K: %d\n", __func__, k);
+    _clear_rb(ec);
     _write(ec, "K,%s\r", _intd(k, 1));
     return assert_ok(ec);
 }
@@ -202,8 +211,12 @@ void _write(ezoec_t *ec, const char *format, ...) {
 
     uart_write(DEV, (uint8_t *)buffer, len);
 
+#if ENABLE_DEBUG
     // Debug output
     for (int i = 0; i < len; i++) {
         putchar(buffer[i] == '\r' ? '\n' : buffer[i]);
     }
+#endif
 }
+
+void _clear_rb(ezoec_t *ec) { ec->rx_ringbuffer.avail = 0; }
