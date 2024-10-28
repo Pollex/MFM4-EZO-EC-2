@@ -14,21 +14,28 @@
 #include <string.h>
 #include <ztimer.h>
 
+#define USE_PER_PROBE_CALIBRATION 0
+
 int cmd_ec_read(int argc, char **argv);
+int cmd_ec_stable(int argc, char **argv);
 int cmd_data_persist(int argc, char **argv);
 int cmd_data_import(int argc, char **argv);
 int cmd_data_export(int argc, char **argv);
 int cmd_data_k_value(int argc, char **argv);
 int cmd_ec_export(int argc, char **argv);
+int cmd_ec_import(int argc, char **argv);
 int cmd_ec_cmd(int argc, char **argv);
 int cmd_ec_rb(int argc, char **argv);
 int cmd_ec_is_calibrated(int argc, char **argv);
 int cmd_ds_read(int argc, char **argv);
 int cmd_ec_calibrate(int argc, char **argv);
+int cmd_switch_probe(int argc, char **argv);
 
 static const shell_command_t shell_commands[] = {
+    {"switch_probe", "", cmd_switch_probe},
     {"ec_calibrate", "", cmd_ec_calibrate},
     {"ec_read", "", cmd_ec_read},
+    {"ec_stable", "", cmd_ec_stable},
     {"ds_read", "", cmd_ds_read},
     {"data_persist", "", cmd_data_persist},
     {"data_export", "", cmd_data_export},
@@ -36,6 +43,7 @@ static const shell_command_t shell_commands[] = {
     {"data_k_value", "", cmd_data_k_value},
     // Less interesting commands
     {"ec_export", "", cmd_ec_export},
+    {"ec_import", "", cmd_ec_import},
     {"ec_is_cal", "", cmd_ec_is_calibrated},
     {"ec_rb", "", cmd_ec_rb},
     {"ec_cmd", "", cmd_ec_cmd},
@@ -46,7 +54,7 @@ ezoec_t ec = {0};
 ezoec_params_t ec_params = {
     .baud_rate = 115200,
     .uart = UART_DEV(1),
-    .k_value = 1,
+    .k_value = 10,
 };
 
 ds18_t t1 = {0};
@@ -71,6 +79,8 @@ struct {
 int main(void) {
     printf("You are running RIOT on a(n) %s board.\n", RIOT_BOARD);
     printf("This board features a(n) %s CPU.\n", RIOT_CPU);
+
+    gpio_init(PRB_SEL_PIN, GPIO_OUT);
 
     eeprom_read(0, &eeprom_data, sizeof(eeprom_data));
     if (strcmp(eeprom_data.magic, MAGIC_HEADER) != 0) {
@@ -97,7 +107,7 @@ int main(void) {
 }
 
 int switch_probe(uint8_t index) {
-    gpio_write(PRB_SEL_1_PIN, index);
+    gpio_write(PRB_SEL_PIN, index);
     return 0;
 }
 
@@ -139,8 +149,6 @@ int cmd_ec_read(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    static int last_probe_index = -1;
-
     if (argc < 1) {
         puts("Usage: ds_read <A|B>");
         return -1;
@@ -159,9 +167,12 @@ int cmd_ec_read(int argc, char **argv) {
         return result;
     }
 
+#if USE_PER_PROBE_CALIBRATION
     // Import settings if probe differs from last
+    static int last_probe_index = -1;
     if (last_probe_index != probeIndex) {
-        result = ezoec_set_k(&ec, &eeprom_data.k_values[probeIndex]);
+        puts("Importing probe settings");
+        result = ezoec_set_k(&ec, eeprom_data.k_values[probeIndex]);
         if (result < 0) {
             printf("Error importing probe calibration: %d\n", result);
             return result;
@@ -171,11 +182,11 @@ int cmd_ec_read(int argc, char **argv) {
             printf("Error importing probe calibration: %d\n", result);
             return result;
         }
-        last_probe_index = probeIndex;
     }
+#endif
 
     uint32_t out = 0;
-    result = ezoec_measure(&ec, 250, &out);
+    result = ezoec_measure(&ec, &out);
     if (result < 0) {
         printf("Error taking measurement: %d\n", result);
         return result;
@@ -253,6 +264,106 @@ int cmd_ec_export(int argc, char **argv) {
     return 0;
 }
 
+int cmd_ec_import(int argc, char **argv) {
+    if (argc < 2) {
+        puts(
+            "Import a calibration string obtained from 'ec_export' into ezoec");
+        printf("Usage: %s <calibration string>\n", argv[0]);
+        return -1;
+    }
+    if (strlen(argv[1]) !=
+        EZOEC_CALIBRATION_MAX_LINES * EZOEC_CALIBRATION_LINE_LENGTH) {
+        printf("Error: expected calibration string of %d characters\n",
+               EZOEC_CALIBRATION_LINE_LENGTH * EZOEC_CALIBRATION_MAX_LINES);
+        return -1;
+    }
+
+    ezoec_calibration_t calibration = {0};
+    char *calibrationString = argv[1];
+    for (int line = 0; line < EZOEC_CALIBRATION_MAX_LINES; line++) {
+        printf("Importing: %.12s\n", calibrationString);
+        memcpy(&calibration, calibrationString, EZOEC_CALIBRATION_LINE_LENGTH);
+        calibrationString += EZOEC_CALIBRATION_LINE_LENGTH;
+    }
+
+    int result = ezoec_cal_import(&ec, &calibration);
+    if (result < 0) {
+        printf("Error importing calibration into EZOEC: %d\n", result);
+        return result;
+    }
+
+    return 0;
+};
+
+#define STABLE_READING_SAMPLES 12
+int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance) {
+    uint32_t readings[STABLE_READING_SAMPLES] = {0};
+    uint8_t total_readings = 0;
+
+    uint32_t start = ztimer_now(ZTIMER_MSEC);
+    int result = 0;
+    for (;;) {
+        //
+        // Check if we've reached timeout limit
+        if (ztimer_now(ZTIMER_MSEC) - start > timeout) {
+            return -ETIMEDOUT;
+        }
+
+        //
+        // Get a new measurement
+        result = ezoec_measure(
+            &ec, &readings[total_readings % STABLE_READING_SAMPLES]);
+        if (result < 0) {
+            return result; // Return the error code
+        }
+        total_readings++;
+
+        // Only check std with X samples
+        if (total_readings <= STABLE_READING_SAMPLES) {
+            printf("Collecting samples: %2d/%2d \t-->\t%ld\n", total_readings,
+                   STABLE_READING_SAMPLES,
+                   readings[(total_readings - 1) % STABLE_READING_SAMPLES]);
+            if (total_readings < STABLE_READING_SAMPLES) {
+                continue;
+            }
+        } else {
+            printf("Collected sample: %2d \t-->\t%ld\n", total_readings,
+                   readings[(total_readings - 1) % STABLE_READING_SAMPLES]);
+        }
+
+        //
+        // Calculate Standard Deviation
+        uint8_t sample_count = total_readings < STABLE_READING_SAMPLES
+                                   ? total_readings
+                                   : STABLE_READING_SAMPLES;
+        uint32_t mean = 0;
+        for (int i = 0; i < sample_count; i++) {
+            mean += readings[i];
+        }
+        mean /= sample_count;
+
+        uint32_t variance = 0;
+        for (int i = 0; i < sample_count; i++) {
+            int32_t deviation = readings[i] - mean;
+            variance += deviation * deviation; // Square the deviation
+        }
+        variance /= sample_count;
+
+        printf("Variance²: %6ld\nMax variance allowed: %6ld\n", variance,
+               tolerance);
+
+        // Validate
+        if (variance < tolerance * tolerance) {
+            return 0; // Return 0 on stable readings
+        }
+    }
+
+    return 0; // This line is unreachable due to the loop
+}
+
+#define CAL_TOLERANCE_DRY_uS 100
+#define CAL_TOLERANCE_LOW_uS 1000
+#define CAL_TOLERANCE_HIGH_uS 1000
 int cmd_ec_calibrate(int argc, char **argv) {
     if (argc < 3) {
         puts("This calibration command requires two parameters. The low and "
@@ -281,32 +392,54 @@ int cmd_ec_calibrate(int argc, char **argv) {
     puts("\n\n================================");
     puts("=======Calibration==============");
     puts("================================");
-    puts("1. Press enter to do a dry calibration");
-    puts("Waiting...");
+    printf("1. Switching to probe %c.\n", prb);
+    switch_probe(probeIndex);
+    puts("1. Starting with a dry calibration, the probe should be dry and not "
+         "in a fluid.");
+    puts("1. Press enter to start...");
     while (getchar() != '\x0A')
         ;
-    int result = ezoec_cal_dry(&ec);
+    puts("1. Waiting for stabilized readings...");
+    int result = wait_for_stable_readings(30000, CAL_TOLERANCE_DRY_uS);
+    if (result < 0) {
+        printf("An error occured during stabilization: %d\n", result);
+        return -1;
+    }
+
+    result = ezoec_cal_dry(&ec);
     if (result < 0) {
         printf("An error occured during dry calibration: %d\n", result);
         return -1;
     }
 
-    puts("\n================================");
+    puts("\n====== LOW Calibration =========");
+    printf("2. Put the probe in the %d uS solution\n", low);
     puts("2. Press enter to do the low calibration");
-    puts("Waiting...");
     while (getchar() != '\x0A')
         ;
+    puts("2. Waiting for stabilized readings...");
+    result = wait_for_stable_readings(30000, CAL_TOLERANCE_LOW_uS);
+    if (result < 0) {
+        printf("An error occured during stabilization: %d\n", result);
+        return -1;
+    }
     result = ezoec_cal_low(&ec, low);
     if (result < 0) {
         printf("An error occured during low calibration: %d\n", result);
         return -1;
     }
 
-    puts("\n================================");
-    puts("3. Press enter to do the high calibration");
+    puts("\n====== HIGH Calibration ========");
+    printf("3. Put the probe in the %d uS solution\n", high);
     puts("Waiting...");
     while (getchar() != '\x0A')
         ;
+    puts("3. Waiting for stabilized readings...");
+    result = wait_for_stable_readings(30000, CAL_TOLERANCE_HIGH_uS);
+    if (result < 0) {
+        printf("An error occured during stabilization: %d\n", result);
+        return -1;
+    }
     result = ezoec_cal_high(&ec, high);
     if (result < 0) {
         printf("An error occured during high calibration: %d\n", result);
@@ -420,5 +553,55 @@ int cmd_data_persist(int argc, char **argv) {
         return -1;
     }
     puts("Calibration stored");
+    return 0;
+}
+
+int cmd_switch_probe(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: %s <probe A/B>>\n", argv[0]);
+        return -1;
+    }
+    char prb = argv[1][0];
+    if (prb != 'A' && prb != 'B') {
+        printf("Invalid probe, must be uppercase A or B, got: %c\n", prb);
+        return -1;
+    }
+    int probeIndex = prb == 'A' ? 0 : 1;
+
+    printf("Switching to probe %c (%d)\n", prb, probeIndex);
+    switch_probe(probeIndex);
+    return 0;
+}
+
+int cmd_ec_stable(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: %s <probe A/B> <tolerance>\n", argv[0]);
+        return -1;
+    }
+    char prb = argv[1][0];
+    if (prb != 'A' && prb != 'B') {
+        printf("Invalid probe, must be uppercase A or B, got: %c\n", prb);
+        return -1;
+    }
+    int probeIndex = prb == 'A' ? 0 : 1;
+
+    printf("Switching to probe %c (%d)\n", prb, probeIndex);
+    switch_probe(probeIndex);
+
+    int tolerance = atoi(argv[2]);
+    int result = wait_for_stable_readings(10000, tolerance);
+    if (result < 0) {
+        printf("An error occured during stabilization: %d\n", result);
+        return -1;
+    }
+
+    uint32_t out = 0;
+    result = ezoec_measure(&ec, &out);
+    if (result < 0) {
+        printf("Error taking measurement: %d\n", result);
+        return result;
+    }
+
+    printf("Read: %ld\n", out);
     return 0;
 }

@@ -13,7 +13,7 @@ extern "C" {
 #define LPUART_TX_PIN GPIO_PIN(PORT_A, 2)
 #define LPUART_RX_PIN GPIO_PIN(PORT_A, 3)
 
-#define PRB_SEL_1_PIN GPIO_PIN(PORT_A, 6)
+#define PRB_SEL_PIN GPIO_PIN(PORT_A, 6)
 #define DQ_A_PIN GPIO_PIN(PORT_A, 5)
 #define DQ_B_PIN GPIO_PIN(PORT_A, 7)
 

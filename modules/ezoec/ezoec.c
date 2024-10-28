@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 #define ASSERT_OK_TIMEOUT 500
@@ -45,8 +45,7 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     }
 
     // Set probe value
-    result =
-        ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(ec->params.k_value, 1));
+    result = ezoec_set_k(ec, ec->params.k_value);
     if (result < 0) {
         DEBUG("[%s]: Could not set k-value: %d\n", __func__, result);
         return result;
@@ -60,10 +59,13 @@ int ezoec_set_baud(ezoec_t *ec, unsigned int baud) {
     return ezoec_cmd(ec, 0, NULL, "Baud,%d", baud);
 }
 
-int ezoec_measure(ezoec_t *ec, int temperature, uint32_t *out) {
+int ezoec_set_k(ezoec_t *ec, uint8_t k_value) {
+    return ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(k_value, 1));
+}
+
+int ezoec_measure(ezoec_t *ec, uint32_t *out) {
     char rx[RX_MAX_LINE_LEN] = {0};
-    int rx_len =
-        ezoec_cmd(ec, 2500, rx, "RT,%s", _int_to_string(temperature, 1));
+    int rx_len = ezoec_cmd(ec, 2000, rx, "R");
     if (rx_len < 0) {
         return rx_len;
     }
@@ -74,6 +76,7 @@ int ezoec_measure(ezoec_t *ec, int temperature, uint32_t *out) {
     char *ptr = ptr_start;
 
     //
+    *out = 0;
     uint8_t decimals = 0;
     while (ptr < ptr_end) {
         if (*ptr == '.') {

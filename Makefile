@@ -10,10 +10,7 @@ RIOTBASE ?= $(CURDIR)/../RIOT
 
 DEVELHELP ?= 1
 
-# we want to use SAUL:
-USEMODULE += saul_default
-# include the shell:
-USEMODULE += shell shell_cmds_default ps
+USEMODULE += shell
 # additional modules for debugging:
 USEMODULE += stdio_uart ztimer ztimer_msec
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom
