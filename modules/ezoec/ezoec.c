@@ -11,13 +11,58 @@
 #define ENABLE_DEBUG 0
 #include "debug.h"
 
-#define ASSERT_OK_TIMEOUT 500
+#define ASSERT_OK_TIMEOUT 2500
 #define TX_MAX_LINE_LEN 42
 #define MAX_DECIMALS 3
 #define DEV UART_DEV(ec->params.uart)
 
 void _clear_ringbuffer(ezoec_t *ec);
 char *_int_to_string(uint8_t k, uint8_t precision);
+
+enum {
+    STATUS_OK,
+    STATUS_ERROR,
+    STATUS_OVERVOLT,
+    STATUS_UNDERVOLT,
+    STATUS_RESET,
+    STATUS_READY,
+    STATUS_SLEEP,
+    STATUS_WAKE,
+    STATUS_DONE,
+} status_t;
+
+#define MAX_STATUS_LEN 6
+static int _read_status(ezoec_t *ec, uint32_t timeout) {
+    while (!ringbuffer_empty(&ec->rx_ringbuffer) &&
+           ringbuffer_peek_one(&ec->rx_ringbuffer) != '*') {
+        ringbuffer_get_one(&ec->rx_ringbuffer);
+    }
+    char status[MAX_STATUS_LEN] = {0};
+    int len = ezoec_readline(ec, status, MAX_STATUS_LEN, timeout);
+    if (len < 0) {
+        return len;
+    }
+    DEBUG("[%s]: %s\n", __func__, status);
+    if (strcmp(status, "*OK") == 0)
+        return STATUS_OK;
+    if (strcmp(status, "*ER") == 0)
+        return STATUS_ERROR;
+    if (strcmp(status, "*OV") == 0)
+        return STATUS_OVERVOLT;
+    if (strcmp(status, "*UV") == 0)
+        return STATUS_UNDERVOLT;
+    if (strcmp(status, "*RS") == 0)
+        return STATUS_RESET;
+    if (strcmp(status, "*RE") == 0)
+        return STATUS_READY;
+    if (strcmp(status, "*SL") == 0)
+        return STATUS_SLEEP;
+    if (strcmp(status, "*WA") == 0)
+        return STATUS_WAKE;
+    if (strcmp(status, "*DONE") == 0)
+        return STATUS_DONE;
+    return -1;
+}
 
 static void on_ezoec_receive(void *arg, uint8_t data) {
     ezoec_t *ec = (ezoec_t *)arg;
@@ -27,27 +72,29 @@ static void on_ezoec_receive(void *arg, uint8_t data) {
 int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     ec->params = *params;
 
+    ringbuffer_init(&ec->rx_ringbuffer, ec->rx_buffer, sizeof(ec->rx_buffer));
+
     int result = uart_init(DEV, ec->params.baud_rate, on_ezoec_receive, ec);
     if (result < 0) {
         DEBUG("[%s]: Could not init uart at %d: %d\n", __func__,
               ec->params.baud_rate, result);
         return result;
     }
+    uart_write(DEV, (const uint8_t *)"\r", 1);
+    ezoec_assert_ok(ec);
 
-    ringbuffer_init(&ec->rx_ringbuffer, ec->rx_buffer, sizeof(ec->rx_buffer));
-
-    // Disable continuous mode
-    result = ezoec_cmd(ec, 0, NULL, "C,0");
+    char version[15] = {0};
+    result = ezoec_cmd(ec, 500, version, "i");
     if (result < 0) {
-        DEBUG("[%s]: Could not disable continuous mode: %d\n", __func__,
-              result);
+        DEBUG("[%s]: Could not get version: %d\n", __func__, result);
         return result;
     }
-
-    // Set probe value
-    result = ezoec_set_k(ec, ec->params.k_value);
-    if (result < 0) {
-        DEBUG("[%s]: Could not set k-value: %d\n", __func__, result);
+    if (result < 5) {
+        DEBUG("[%s]: Not enough rx to be version info: %d\n", __func__, result);
+        return result;
+    }
+    if (version[3] != 'E' || version[4] != 'C') {
+        DEBUG("[%s]: does not appear to be EC device: %s\n", __func__, version);
         return result;
     }
 
@@ -59,11 +106,36 @@ int ezoec_set_baud(ezoec_t *ec, unsigned int baud) {
     return ezoec_cmd(ec, 0, NULL, "Baud,%d", baud);
 }
 
+int ezoec_factory(ezoec_t *ec) {
+    uart_write(DEV, (const uint8_t *)"Factory\r", sizeof("Factory\r"));
+
+    int result = 0;
+    // Wait for reset
+    result = _read_status(ec, 2000);
+    if (result < 0)
+        return result;
+    if (result != STATUS_OK)
+        return -1;
+    result = _read_status(ec, 2000);
+    if (result < 0)
+        return result;
+    if (result != STATUS_RESET)
+        return -1;
+    result = _read_status(ec, 2000);
+    if (result < 0)
+        return result;
+    if (result != STATUS_READY)
+        return -1;
+
+    DEBUG("[%s]: EZO ready\n", __func__);
+    return 0;
+}
+
 int ezoec_set_k(ezoec_t *ec, uint8_t k_value) {
     return ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(k_value, 1));
 }
 
-int ezoec_measure(ezoec_t *ec, uint32_t *out) {
+int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
     char rx[RX_MAX_LINE_LEN] = {0};
     int rx_len = ezoec_cmd(ec, 2000, rx, "R");
     if (rx_len < 0) {
@@ -76,7 +148,7 @@ int ezoec_measure(ezoec_t *ec, uint32_t *out) {
     char *ptr = ptr_start;
 
     //
-    *out = 0;
+    *out_nS = 0;
     uint8_t decimals = 0;
     while (ptr < ptr_end) {
         if (*ptr == '.') {
@@ -85,13 +157,13 @@ int ezoec_measure(ezoec_t *ec, uint32_t *out) {
             continue;
         }
 
-        *out *= 10;
-        *out += (*ptr - 0x30);
+        *out_nS *= 10;
+        *out_nS += (*ptr - 0x30);
         ptr++;
     }
     // Correct for potential missing decimals
     for (int x = MAX_DECIMALS - decimals; x > 0; x--) {
-        *out *= 10;
+        *out_nS *= 10;
     }
 
     return 0;
@@ -263,21 +335,29 @@ int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
 }
 
 int ezoec_assert_ok(ezoec_t *ec) {
-    enum { buf_len = 10 };
-    char buf[buf_len + 1] = {0};
-
-    int result = ezoec_readline(ec, buf, buf_len, ASSERT_OK_TIMEOUT);
+    int result = 0;
+read_status:
+    result = _read_status(ec, ASSERT_OK_TIMEOUT);
     if (result < 0) {
-        DEBUG("[%s]: Error reading line: %d\n", __func__, result);
+        DEBUG("[%s]: Error reading status: %d\n", __func__, result);
         return result;
     }
-
-    if (strcmp(buf, "*OK") != 0) {
-        DEBUG("[%s]: Non OK: '%s'\n", __func__, buf);
+    DEBUG("[%s]: Status: %d\n", __func__, result);
+    switch (result) {
+    case STATUS_OK:
+        return 0;
+    case STATUS_ERROR:
         return -1;
+    case STATUS_OVERVOLT:
+    case STATUS_UNDERVOLT:
+    case STATUS_RESET:
+    case STATUS_READY:
+    case STATUS_SLEEP:
+    case STATUS_WAKE:
+        goto read_status;
+    default:
+        return -2;
     }
-
-    DEBUG("[%s]: OK\n", __func__);
     return 0;
 }
 
@@ -301,4 +381,7 @@ char *_int_to_string(uint8_t k, uint8_t precision) {
     return ptr + 1;
 }
 
-void _clear_ringbuffer(ezoec_t *ec) { ec->rx_ringbuffer.avail = 0; }
+void _clear_ringbuffer(ezoec_t *ec) {
+    ec->rx_ringbuffer.start = 0;
+    ec->rx_ringbuffer.avail = 0;
+}

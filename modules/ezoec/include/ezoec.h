@@ -15,7 +15,6 @@ extern "C" {
 
 typedef struct {
     int uart;
-    uint8_t k_value;
     unsigned int baud_rate;
 } ezoec_params_t;
 
@@ -30,8 +29,9 @@ typedef struct {
 } ezoec_calibration_t;
 
 int ezoec_init(ezoec_t *ec, const ezoec_params_t *params);
-int ezoec_measure(ezoec_t *ec, uint32_t *out);
+int ezoec_measure(ezoec_t *ec, uint32_t *out_nS);
 int ezoec_set_baud(ezoec_t *ec, unsigned int baud);
+int ezoec_factory(ezoec_t *ec);
 int ezoec_set_k(ezoec_t *ec, uint8_t k_value);
 int ezoec_is_calibrated(ezoec_t *ec);
 int ezoec_cal_dry(ezoec_t *ec);
