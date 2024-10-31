@@ -190,7 +190,14 @@ int cmd_provision(int argc, char **argv) {
         printf("Could not disable continuous mode: %d\n", result);
         return result;
     }
-    puts("Disabled continuous reading");
+    puts("Disabled EZOEC continuous reading");
+    // Disable LED
+    result = ezoec_cmd(&ec, 0, NULL, "L,0");
+    if (result < 0) {
+        printf("Could not disable LED: %d\n", result);
+        return result;
+    }
+    puts("Disabled EZOEC LED");
 
 retry_ka:
     puts("2. K-Value of probe A: ");
