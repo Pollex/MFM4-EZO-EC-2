@@ -19,3 +19,6 @@ To be designed
 ## Configuration interface
 
 To be designed
+
+# RIOT OS
+Clone riot os 2024.07 and apply patch 001

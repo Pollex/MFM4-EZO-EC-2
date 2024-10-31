@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ztimer.h>
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include <debug.h>
 
 #define REG_FIRMWARE_VERSION 0x01
@@ -69,12 +69,13 @@ uint8_t buffer[BUFFER_SIZE] = {0};
         return size + CRC_BYTES;                                               \
     }
 
-static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr, void *arg) {
+static msg_t msg = {0};
+static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr,
+                           void *arg) {
     (void)arg;
-    DEBUG("%s: %d, %02X\n", __func__, read, reg);
+    DEBUG("p: %d, %02X\n", read, reg);
     uint8_t *data = buffer;
     uint8_t data_len = 0;
-    msg_t msg = {0};
     switch (reg) {
     case REG_FIRMWARE_VERSION:
         READONLY();
@@ -95,7 +96,6 @@ static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr, void *ar
         WRITABLE(1);
         data_len = 1;
         data[0] = do_initialize;
-        msg_send(&msg, main_thread_pid);
         break;
     case REG_INIT_STATUS:
         READONLY();
@@ -106,7 +106,6 @@ static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr, void *ar
         WRITABLE(1);
         data_len = 1;
         data[0] = do_measurement;
-        msg_send(&msg, main_thread_pid);
         break;
     case REG_MEAS_STATUS:
         READONLY();
@@ -186,7 +185,7 @@ static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr, void *ar
 
 static void i2c_finish(bool read, uint16_t reg, size_t len, void *arg) {
     (void)arg;
-    DEBUG("%s: %d, %02X, %d\n", __func__, read, reg, len);
+    DEBUG("f: %d, %02X, %d\n", read, reg, len);
     if (read)
         return; // nothing to do
     if (len < 3)
@@ -206,10 +205,12 @@ static void i2c_finish(bool read, uint16_t reg, size_t len, void *arg) {
     // Execute command
     switch (reg) {
     case REG_INIT_START:
-        do_initialize = data[0];
+        msg.type = TASK_SENSOR_INIT;
+        msg_send(&msg, main_thread_pid);
         break;
     case REG_MEAS_START:
-        do_measurement = data[0];
+        msg.type = TASK_MEASUREMENT;
+        msg_send(&msg, main_thread_pid);
         break;
     case REG_SENSOR_SELECTED:
         active_sensor = data[0];

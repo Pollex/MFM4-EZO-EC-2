@@ -10,6 +10,12 @@ enum {
     STATUS_READY = 0x0A,
 };
 
+enum {
+    TASK_UNKNOWN,
+    TASK_SENSOR_INIT,
+    TASK_MEASUREMENT,
+};
+
 typedef struct {
     uint32_t conductivity_a;
     uint32_t conductivity_b;

@@ -18,13 +18,15 @@
 #include <string.h>
 #include <sys/unistd.h>
 #include <ztimer.h>
+#define ENABLE_DEBUG 1
+#include <debug.h>
 
 measurement_t measurement = {0};
 uint8_t do_measurement = 0;
 uint8_t measurement_status = STATUS_NOT_READY;
 uint8_t do_initialize = 0;
 uint8_t initialize_status = STATUS_NOT_READY;
-kernel_pid_t main_thread_pid = 0;
+kernel_pid_t main_thread_pid = 1;
 
 static const shell_command_t shell_commands[] = {
     {"provision", "Full provisioning sequence for EC Module board",
@@ -34,103 +36,111 @@ static const shell_command_t shell_commands[] = {
     {NULL, NULL, NULL},
 };
 
-void slot_id_init(void) {
-    gpio_init(MOD_ID1_PIN, GPIO_IN);
-    gpio_init(MOD_ID2_PIN, GPIO_IN);
-    gpio_init(MOD_ID3_PIN, GPIO_IN);
-}
-
-int slot_id(void) {
+int read_slot_id(void) {
     int id = 0;
     if (gpio_read(MOD_ID1_PIN) > 0)
-        id += 1;
+        id |= 1 << 0;
     if (gpio_read(MOD_ID2_PIN) > 0)
-        id += 2;
+        id |= 1 << 1;
     if (gpio_read(MOD_ID3_PIN) > 0)
-        id += 4;
+        id |= 1 << 2;
     return id;
 }
 
+int main_shell(void) {
+    sensors_init();
+    char line_buf[SHELL_DEFAULT_BUFSIZE * 2];
+    shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE * 2);
+    return 0;
+}
+
 #define SHELL_MAGIC 0x24C0FFEE
-int main(void) {
+int should_boot_shell(void) {
     // Reset by button occured
     // Check if we need to enter shell mode
     if ((RCC->CSR & RCC_CSR_PINRSTF_Msk) > 0) {
-        puts("Ext rst");
         if (RTC->BKP0R == SHELL_MAGIC) {
-            puts("Magic");
             // clear magic to bkp0r
             PWR->CR |= PWR_CR_DBP;
             RTC->BKP0R = 0;
-            goto enter_shell;
+            return 1;
         } else {
-            puts("Nomagic");
             // write magic to bkp0r
             PWR->CR |= PWR_CR_DBP;
             RTC->BKP0R = SHELL_MAGIC;
             ztimer_sleep(ZTIMER_MSEC, 500);
-            RTC->BKP0R = 0;
         }
     }
+    RTC->BKP0R = 0;
+    return 0;
+}
 
-    main_thread_pid = thread_getpid();
+static msg_t _msg_queue[4] = {0};
+int main(void) {
 
+    gpio_init(MOD_ID1_PIN, GPIO_IN);
+    gpio_init(MOD_ID2_PIN, GPIO_IN);
+    gpio_init(MOD_ID3_PIN, GPIO_IN);
     gpio_init(PRB_SEL_PIN, GPIO_OUT);
     gpio_init(BOOST_EN_PIN, GPIO_OUT);
-    slot_id_init();
-    config_init();
-    uint8_t id = slot_id();
-    if (id == 0)
-        id = 1;
-    i2c_slave_init(0x10 + slot_id());
+    main_thread_pid = thread_getpid();
+    msg_init_queue(_msg_queue, 4);
 
-    msg_t msg = {0};
+    uint8_t slot_id = read_slot_id();
+    if (slot_id == 0)
+        slot_id = 1;
+    DEBUG("SLOT: 0x%02X\n", slot_id);
+    i2c_slave_init(0x10 + slot_id);
+
+    config_init();
+
+    if (should_boot_shell())
+        return main_shell();
+
+    static msg_t msg = {0};
     for (;;) {
-        if (do_initialize) {
-            puts("Should init now...");
+        DEBUG("Wait msg\n");
+        msg_receive(&msg);
+        switch (msg.type) {
+        case TASK_SENSOR_INIT:
+            DEBUG("Sensor init\n");
             do_initialize = 0;
-        } else if (do_measurement) {
-            puts("Should measure now...");
+            break;
+        case TASK_MEASUREMENT:
+            DEBUG("Sensor measure\n");
             measurement_status = STATUS_BUSY;
 
             sensors_enable();
+            ztimer_sleep(ZTIMER_MSEC, 10);
             int result = sensors_init();
             if (result < 0) {
-                printf("shit init");
+                DEBUG("ERR(%d) sensors init\n", result);
             }
             result = sensors_trigger_temperatures();
             if (result < 0) {
-                printf("shit trigger");
+                DEBUG("ERR(%d) trigger temps\n", result);
             }
             result =
                 sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
             if (result < 0) {
-                printf("shit conduc A");
+                DEBUG("ERR(%d) conduc A\n", result);
             }
             result =
                 sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
             if (result < 0) {
-                printf("shit conduc B");
+                DEBUG("ERR(%d) conduc B\n", result);
             }
             result = sensors_get_temperatures(&measurement.temperature_a,
                                               &measurement.temperature_b);
             if (result < 0) {
-                printf("shit get temps");
+                DEBUG("ERR(%d) get temps\n", result);
             }
             sensors_disable();
 
             measurement_status = STATUS_READY;
             do_measurement = 0;
-        } else {
-            msg_receive(&msg);
+            break;
         }
     }
-    return 0;
-
-enter_shell:
-    sensors_init();
-    char line_buf[SHELL_DEFAULT_BUFSIZE * 2];
-    shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE * 2);
-
     return 0;
 }
