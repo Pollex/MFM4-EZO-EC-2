@@ -43,7 +43,7 @@ int read_slot_id(void) {
     if (gpio_read(MOD_ID2_PIN) > 0)
         id |= 1 << 1;
     if (gpio_read(MOD_ID3_PIN) > 0)
-        id |= 1 << 2;
+        id += 3;
     return id;
 }
 

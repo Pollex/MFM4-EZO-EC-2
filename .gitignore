@@ -196,3 +196,6 @@ bin/
 *.7z
 hardware/Outputs
 hardware/*backup
+
+*.lck
+*.bkp
