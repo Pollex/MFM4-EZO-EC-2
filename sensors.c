@@ -6,6 +6,7 @@
 #include "periph/gpio.h"
 #include "ztimer.h"
 #include <stdint.h>
+#include <stdio.h>
 
 ezoec_t ec = {0};
 ds18_t t1 = {0};
@@ -30,41 +31,65 @@ int sensors_init(void) {
 void sensors_enable(void) { gpio_set(BOOST_EN_PIN); }
 void sensors_disable(void) { gpio_clear(BOOST_EN_PIN); }
 
-int sensors_trigger_temperatures(void) {
-    int result = ds18_trigger(&t1);
-    if (result < 0) {
-        return result;
+int sensors_trigger_temperature(probe_t probe) {
+    ds18_t *t = &t1;
+    if (probe == PROBE_B) {
+        t = &t2;
     }
-    result = ds18_trigger(&t2);
+    int result = ds18_trigger(t);
     if (result < 0) {
         return result;
     }
     return 0;
 }
-int sensors_get_temperatures(int16_t *probeA, int16_t *probeB) {
-    int result = ds18_read(&t1, probeA);
-    if (result < 0) {
-        return result;
+int sensors_get_temperature(probe_t probe, int16_t *out) {
+    ds18_t *t = &t1;
+    if (probe == PROBE_B) {
+        t = &t2;
     }
-    result = ds18_read(&t2, probeB);
+    int result = ds18_read(t, out);
     if (result < 0) {
         return result;
     }
     return 0;
 }
 
+static int switch_probe(uint8_t index) {
+    gpio_write(PRB_SEL_PIN, index);
+    return 0;
+}
+
 int sensors_get_conductivity(probe_t probe, uint32_t *out) {
+    int result;
+
+    // Switch probe
+    switch_probe(probe);
+
     // Set probe K
-    int result = ezoec_set_k(&ec, eeprom_config.k_values[probe]);
-    if (result < 0) {
-        return result;
+    uint8_t k = eeprom_config.k_values[probe];
+    if (k > 0) {
+        result = ezoec_set_k(&ec, k);
+        if (result < 0) {
+            return result;
+        }
+    } else {
+        printf("Warning: probe %c has no K value set\n",
+               probe == PROBE_A ? 'A' : 'B');
     }
+
     // Load calibration into ezoec
-    result = ezoec_cal_import(&ec, &eeprom_config.calibration[probe]);
-    if (result < 0) {
-        return result;
+    if (config_has_calibration(probe)) {
+        result = ezoec_cal_import(&ec, &eeprom_config.calibration[probe]);
+        if (result < 0) {
+            return result;
+        }
+        ztimer_sleep(ZTIMER_MSEC, 1000);
+        ezoec_measure(&ec, out);
+    } else {
+        printf("Warning: probe %c has no calibration\n",
+               probe == PROBE_A ? 'A' : 'B');
     }
-    ztimer_sleep(ZTIMER_MSEC, 1000);
+
     result = ezoec_measure(&ec, out);
     if (result < 0) {
         return result;

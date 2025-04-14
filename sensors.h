@@ -27,7 +27,6 @@ static const ds18_params_t t2_params = {
     .out_mode = GPIO_OD_PU,
 };
 
-
 typedef enum {
     PROBE_A,
     PROBE_B,
@@ -36,8 +35,8 @@ typedef enum {
 int sensors_init(void);
 void sensors_enable(void);
 void sensors_disable(void);
-int sensors_trigger_temperatures(void);
-int sensors_get_temperatures(int16_t *probeA, int16_t *probeB);
+int sensors_trigger_temperature(probe_t probe);
+int sensors_get_temperature(probe_t probe, int16_t *out);
 int sensors_get_conductivity(probe_t probe, uint32_t *out);
 
 #ifdef __cplusplus

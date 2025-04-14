@@ -13,7 +13,8 @@ DEVELHELP ?= 1
 
 #SRCS = i2c.c main.c shell_.c
 
-CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(4*THREAD_STACKSIZE_DEFAULT\)
+GIT_HASH = $(shell git describe --tags --first-parent --dirty --always)
+CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(4*THREAD_STACKSIZE_DEFAULT\) -DFW_VERSION=\"$(GIT_HASH:-dirty=\*)\"
 
 USEMODULE += shell
 # additional modules for debugging:

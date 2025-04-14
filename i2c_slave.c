@@ -30,20 +30,16 @@
 #define REG_ERROR_COUNT 0x50
 #define REG_ERROR_STATUS 0x51
 
-static const char FW_VERSION[10] = "0.0.1-dev";
+static const char fw_version[] = FW_VERSION;
 static const uint8_t PROTO_VERSION = 0x00;
 static const uint8_t MODULE_TYPE = 0xFF;
-static const uint16_t MEASURE_TIME = 15000;
+static const uint16_t MEASURE_TIME = 12000;
 static const uint8_t SENSOR_COUNT = 0x01;
 static uint8_t active_sensor = 0x01;
 static uint8_t measurement_type = 0x00;
 static uint16_t sample_count = 0x01;
 static uint16_t sensor_value = 0x00;
 static uint8_t error_value = 0x00;
-
-#define FLAG_READ (1 << 0)
-#define FLAG_WRITE (1 << 1)
-#define FLAG_REVERSE (1 << 2)
 
 uint16_t calculateCRC_CCITT(uint8_t *data, int length);
 
@@ -79,8 +75,8 @@ static uint8_t i2c_prepare(bool read, uint16_t reg, uint8_t **data_ptr,
     switch (reg) {
     case REG_FIRMWARE_VERSION:
         READONLY();
-        data_len = sizeof(FW_VERSION);
-        memcpy(data, (uint8_t *)FW_VERSION, data_len);
+        data_len = sizeof(fw_version);
+        memcpy(data, (uint8_t *)fw_version, data_len);
         break;
     case REG_PROTOCOL_VERSION:
         READONLY();
@@ -226,12 +222,12 @@ static void i2c_finish(bool read, uint16_t reg, size_t len, void *arg) {
 
 i2c_slave_fsm_t i2c_slave;
 int i2c_slave_init(uint8_t addr) {
+    //i2c_config[0].dev->CR1 &= ~(I2C_CR1_PE);
     /* configure slave addr (7 bits) */
-    i2c_config[0].dev->OAR1 &= ~(I2C_OAR1_OA1EN);
-    i2c_config[0].dev->OAR1 &= ~(I2C_OAR1_OA1);
-    i2c_config[0].dev->OAR1 |= ((addr & 0x7F) << 1);
-    i2c_config[0].dev->OAR1 |= I2C_OAR1_OA1EN;
+    i2c_config[0].dev->OAR1 &= ~(I2C_OAR1_OA1EN |I2C_OAR1_OA1);
+    i2c_config[0].dev->OAR1 |= I2C_OAR1_OA1EN | ((addr & 0x7F) << 1);
     i2c_slave_reg(&i2c_slave, i2c_prepare, i2c_finish, 0, NULL);
+    //i2c_config[0].dev->CR1 |= I2C_CR1_PE;
     return 0;
 }
 

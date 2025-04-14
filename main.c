@@ -21,6 +21,10 @@
 #define ENABLE_DEBUG 1
 #include <debug.h>
 
+#ifndef FW_VERSION
+#define FW_VERSION "NO_VER"
+#endif /* ifndef FW_VERSION */
+
 measurement_t measurement = {0};
 uint8_t do_measurement = 0;
 uint8_t measurement_status = STATUS_NOT_READY;
@@ -31,7 +35,12 @@ kernel_pid_t main_thread_pid = 1;
 static const shell_command_t shell_commands[] = {
     {"provision", "Full provisioning sequence for EC Module board",
      cmd_provision},
-    {"measurement", "Performs a full measurement", cmd_do_measurement},
+    {"measure", "Performs a full measurement", cmd_do_measurement},
+    {"export", "Exports the currently loaded configuration", cmd_config_export},
+    {"switch", "Switches the current active probe", cmd_switch_probe},
+    {"set_k", "Sets the K-Value for a probe", cmd_set_k},
+    {"save", "Saves the configuration to memory", cmd_save},
+    {"factory", "Clears all configuration and calibrations", cmd_factory_reset},
     {"ec_cmd", "Debugging: send command to EZOEC module", cmd_ec_cmd},
     {NULL, NULL, NULL},
 };
@@ -77,12 +86,13 @@ int should_boot_shell(void) {
 
 static msg_t _msg_queue[4] = {0};
 int main(void) {
-
     gpio_init(MOD_ID1_PIN, GPIO_IN);
     gpio_init(MOD_ID2_PIN, GPIO_IN);
     gpio_init(MOD_ID3_PIN, GPIO_IN);
     gpio_init(PRB_SEL_PIN, GPIO_OUT);
     gpio_init(BOOST_EN_PIN, GPIO_OUT);
+    gpio_clear(BOOST_EN_PIN);
+
     main_thread_pid = thread_getpid();
     msg_init_queue(_msg_queue, 4);
 
@@ -93,6 +103,8 @@ int main(void) {
     i2c_slave_init(0x10 + slot_id);
 
     config_init();
+
+    printf("FWVER: %s\n", FW_VERSION);
 
     if (should_boot_shell())
         return main_shell();
@@ -109,16 +121,19 @@ int main(void) {
         case TASK_MEASUREMENT:
             DEBUG("Sensor measure\n");
             measurement_status = STATUS_BUSY;
-
             sensors_enable();
             ztimer_sleep(ZTIMER_MSEC, 10);
             int result = sensors_init();
             if (result < 0) {
                 DEBUG("ERR(%d) sensors init\n", result);
             }
-            result = sensors_trigger_temperatures();
+            result = sensors_trigger_temperature(PROBE_A);
             if (result < 0) {
-                DEBUG("ERR(%d) trigger temps\n", result);
+                DEBUG("ERR(%d) trigger temp A\n", result);
+            }
+            result = sensors_trigger_temperature(PROBE_B);
+            if (result < 0) {
+                DEBUG("ERR(%d) trigger temp B\n", result);
             }
             result =
                 sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
@@ -130,10 +145,15 @@ int main(void) {
             if (result < 0) {
                 DEBUG("ERR(%d) conduc B\n", result);
             }
-            result = sensors_get_temperatures(&measurement.temperature_a,
-                                              &measurement.temperature_b);
+            result =
+                sensors_get_temperature(PROBE_A, &measurement.temperature_a);
             if (result < 0) {
-                DEBUG("ERR(%d) get temps\n", result);
+                DEBUG("ERR(%d) get temp A\n", result);
+            }
+            result =
+                sensors_get_temperature(PROBE_B, &measurement.temperature_b);
+            if (result < 0) {
+                DEBUG("ERR(%d) get temp B\n", result);
             }
             sensors_disable();
 

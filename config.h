@@ -4,7 +4,8 @@
 #include "ezoec.h"
 #include <stdint.h>
 
-#define CFG_FLAG_CALIBRATED (1 << 0)
+#define CFG_FLAG_A_CALIBRATED (1 << 0)
+#define CFG_FLAG_B_CALIBRATED (1 << 1)
 #define CFG_MAGIC_HEADER "MFM01"
 
 typedef struct {
@@ -21,7 +22,9 @@ extern "C" {
 #endif
 
 int config_init(void);
+int config_clear(void);
 int config_persist(void);
+int config_has_calibration(uint8_t probe);
 
 #ifdef __cplusplus
 } /* extern "C" */

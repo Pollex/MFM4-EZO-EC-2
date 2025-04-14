@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <ztimer.h>
 
 static char *_int_to_string(uint32_t k, uint8_t precision, char *buf) {
@@ -15,6 +16,11 @@ static char *_int_to_string(uint32_t k, uint8_t precision, char *buf) {
     if (buf == NULL)
         buf = internal_buf;
     char *ptr = &buf[buf_len - 1];
+
+    if (k == 0) {
+        *ptr-- = '0';
+        return ptr + 1;
+    }
 
     int decimals = 0;
     while (k > 0) {
@@ -297,8 +303,8 @@ retry_kb:
             printf("Could not export calibration: %d\n", result);
             return result;
         }
+        eeprom_config.flags |= CFG_FLAG_A_CALIBRATED << probe;
     }
-    eeprom_config.flags |= CFG_FLAG_CALIBRATED;
 
     puts("7. Provisioning is now done, press enter to save...");
     _wait_for_enter();
@@ -337,25 +343,32 @@ int cmd_do_measurement(int argc, char **argv) {
     (void)argv;
 
     puts("Triggering temperature sensors");
-    int result = sensors_trigger_temperatures();
+    int result = sensors_trigger_temperature(PROBE_A);
     if (result < 0) {
-        printf("shit trigger");
+        printf("ERR(%d) trigger temp A\n", result);
+    }
+    result = sensors_trigger_temperature(PROBE_B);
+    if (result < 0) {
+        printf("ERR(%d) trigger temp B\n", result);
     }
     puts("Measuring conductivity on probe A");
     result = sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
     if (result < 0) {
-        printf("shit conduc A");
+        printf("ERR(%d) conduc A\n", result);
     }
     puts("Measuring conductivity on probe B");
     result = sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
     if (result < 0) {
-        printf("shit conduc B");
+        printf("ERR(%d) conduc B\n", result);
     }
     puts("Reading temperature sensors");
-    result = sensors_get_temperatures(&measurement.temperature_a,
-                                      &measurement.temperature_b);
+    result = sensors_get_temperature(PROBE_A, &measurement.temperature_a);
     if (result < 0) {
-        printf("shit get temps");
+        printf("ERR(%d) get temp A\n", result);
+    }
+    result = sensors_get_temperature(PROBE_B, &measurement.temperature_b);
+    if (result < 0) {
+        printf("ERR(%d) get temp B\n", result);
     }
 
     char buf[20 * 4 + 1] = {0};
@@ -367,6 +380,86 @@ int cmd_do_measurement(int argc, char **argv) {
            _int_to_string(measurement.temperature_a, 2, buf + 20),
            _int_to_string(measurement.conductivity_b, 3, buf + 40),
            _int_to_string(measurement.temperature_b, 2, buf + 60));
+
+    return 0;
+}
+
+void _print_ezoec_calibration(ezoec_calibration_t *cal) {
+    for (int ix = 0; ix < EZOEC_CALIBRATION_MAX_LINES; ix++) {
+        printf("%.*s", EZOEC_CALIBRATION_LINE_LENGTH, cal->line[ix]);
+    }
+    puts("");
+}
+int cmd_config_export(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    puts("=============== PROBE A ===================");
+    printf("K-Value: %s\nCalibration: ",
+           _int_to_string(eeprom_config.k_values[PROBE_A], 1, NULL));
+    _print_ezoec_calibration(&eeprom_config.calibration[PROBE_A]);
+    puts("\n\n============== PROBE B ====================");
+    printf("K-Value: %s\nCalibration: ",
+           _int_to_string(eeprom_config.k_values[PROBE_B], 1, NULL));
+    _print_ezoec_calibration(&eeprom_config.calibration[PROBE_B]);
+    puts("\n");
+
+    return 0;
+}
+
+int cmd_switch_probe(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    if (argc < 2) {
+        printf("Usage: %s <A/B>\n", argv[0]);
+        return 0;
+    }
+
+    uint8_t probe = PROBE_A;
+    if (argv[1][0] == 'a' || argv[1][0] == 'A') {
+        probe = PROBE_A;
+    } else if (argv[1][0] == 'b' || argv[1][0] == 'B') {
+        probe = PROBE_B;
+    } else {
+        printf("Usage: %s <A/B>\n", argv[0]);
+        return 0;
+    }
+
+    switch_probe(probe);
+
+    return 0;
+}
+
+int cmd_save(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    config_persist();
+    puts("Saved");
+
+    return 0;
+}
+
+int cmd_set_k(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    if (argc < 3) {
+        printf(
+            "Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n",
+            argv[0]);
+        return 0;
+    }
+
+    return 0;
+}
+
+int cmd_factory_reset(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    config_clear();
+    puts("Config cleared, use the `save` command to save the empty config");
 
     return 0;
 }
