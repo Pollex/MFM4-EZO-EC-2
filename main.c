@@ -4,6 +4,7 @@
 #include "i2c_slave.h"
 #include "msg.h"
 #include "periph/cpu_gpio.h"
+#include "periph/cpu_gpio_ll.h"
 #include "periph/gpio.h"
 #include "sched.h"
 #include "sensors.h"
@@ -65,27 +66,38 @@ int main_shell(void) {
 
 #define SHELL_MAGIC 0x24C0FFEE
 int should_boot_shell(void) {
-    // Reset by button occured
-    // Check if we need to enter shell mode
-    if ((RCC->CSR & RCC_CSR_PINRSTF_Msk) > 0) {
-        if (RTC->BKP0R == SHELL_MAGIC) {
-            // clear magic to bkp0r
-            PWR->CR |= PWR_CR_DBP;
-            RTC->BKP0R = 0;
-            return 1;
-        } else {
-            // write magic to bkp0r
-            PWR->CR |= PWR_CR_DBP;
-            RTC->BKP0R = SHELL_MAGIC;
-            ztimer_sleep(ZTIMER_MSEC, 500);
-        }
+    // If magic already set then we should boot to shell
+    if (RTC->BKP0R == SHELL_MAGIC) {
+        // clear magic to bkp0r
+        PWR->CR |= PWR_CR_DBP;
+        RTC->BKP0R = 0;
+        return 1;
     }
-    RTC->BKP0R = 0;
+
+    // otherwise write magic to bkp0r and queue a clear message in 500ms to
+    // prevent boot delay
+    PWR->CR |= PWR_CR_DBP;
+    RTC->BKP0R = SHELL_MAGIC;
+
+    static ztimer_t clear_timer;
+    static msg_t clear_msg = {.type = TASK_CLEAR_BOOT_MAGIC};
+    ztimer_set_msg(ZTIMER_MSEC, &clear_timer, 500, &clear_msg, main_thread_pid);
+
     return 0;
 }
 
+/*
+ * The system's I2C is ready in about 1.10ms after poweron.
+ * This is based on a GPIO SET after i2c_slave_init, on poweron the test pin
+ * will show disparity to ground up until the GPIO_SET.
+ */
+
+#define PIN_TEST GPIO_PIN(PORT_A, 15)
 static msg_t _msg_queue[4] = {0};
 int main(void) {
+    // gpio_init(PIN_TEST, GPIO_OUT);
+    // gpio_set(PIN_TEST);
+
     gpio_init(MOD_ID1_PIN, GPIO_IN);
     gpio_init(MOD_ID2_PIN, GPIO_IN);
     gpio_init(MOD_ID3_PIN, GPIO_IN);
@@ -102,10 +114,12 @@ int main(void) {
     DEBUG("SLOT: 0x%02X\n", slot_id);
     i2c_slave_init(0x10 + slot_id);
 
+    // Duration: 0.35 ms
     config_init();
 
     printf("FWVER: %s\n", FW_VERSION);
 
+    // Duration: 0.038 ms
     if (should_boot_shell())
         return main_shell();
 
@@ -159,6 +173,10 @@ int main(void) {
 
             measurement_status = STATUS_READY;
             do_measurement = 0;
+            break;
+        case TASK_CLEAR_BOOT_MAGIC:
+            PWR->CR |= PWR_CR_DBP;
+            RTC->BKP0R = 0;
             break;
         }
     }

@@ -14,6 +14,7 @@ enum {
     TASK_UNKNOWN,
     TASK_SENSOR_INIT,
     TASK_MEASUREMENT,
+    TASK_CLEAR_BOOT_MAGIC,
 };
 
 typedef struct {

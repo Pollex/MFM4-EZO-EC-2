@@ -3,6 +3,7 @@
 #include "sensors.h"
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 eeprom_config_t eeprom_config = {0};
 

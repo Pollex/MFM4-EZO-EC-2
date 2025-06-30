@@ -220,14 +220,64 @@ static void i2c_finish(bool read, uint16_t reg, size_t len, void *arg) {
     }
 }
 
+static void _i2c_init_timing(i2c_t dev, I2C_TypeDef *i2c) {
+    DEBUG("[i2c] init: configuring timing\n");
+    /* set the timing register value from predefined values */
+    i2c_timing_param_t tp = timing_params[i2c_config[dev].speed];
+    uint32_t timing = (((uint32_t)tp.presc << I2C_TIMINGR_PRESC_Pos) |
+                       ((uint32_t)tp.scldel << I2C_TIMINGR_SCLDEL_Pos) |
+                       ((uint32_t)tp.sdadel << I2C_TIMINGR_SDADEL_Pos) |
+                       ((uint16_t)tp.sclh << I2C_TIMINGR_SCLH_Pos) | tp.scll);
+
+    /* set timing registers */
+    i2c->TIMINGR = timing;
+}
+
+#define CLEAR_FLAG                                                             \
+    (I2C_ICR_NACKCF | I2C_ICR_ARLOCF | I2C_ICR_BERRCF | I2C_ICR_ADDRCF)
+static void _i2c_init_slave(i2c_t dev, uint8_t addr) {
+    I2C_TypeDef *i2c = i2c_config[dev].dev;
+    assert(i2c != NULL);
+
+    DEBUG("[i2c] init: configuring as slave with addr=0x%02X\n", addr);
+
+    /* disable device */
+    i2c->CR1 &= ~(I2C_CR1_PE);
+
+    /* configure analog noise filter */
+    i2c->CR1 |= I2C_CR1_ANFOFF;
+
+    /* configure digital noise filter */
+    i2c->CR1 |= I2C_CR1_DNF;
+
+    _i2c_init_timing(dev, i2c);
+
+    /* configure clock stretching */
+    i2c->CR1 &= ~(I2C_CR1_NOSTRETCH);
+
+    /* configure slave addr (7 bits) */
+    i2c->OAR1 &= ~(I2C_OAR1_OA1EN);
+    i2c->OAR1 &= ~(I2C_OAR1_OA1);
+    i2c->OAR1 |= ((addr & 0x7F) << 1);
+    i2c->OAR1 |= I2C_OAR1_OA1EN;
+
+    /* Various conf */
+    i2c->CR1 |= I2C_CR1_ERRIE | I2C_CR1_ADDRIE | I2C_CR1_RXIE | I2C_CR1_TXIE |
+                I2C_CR1_STOPIE;
+    // i2c->CR2 |= I2C_CR2_RELOAD;
+
+    /* Clear interrupt */
+    i2c->ICR |= CLEAR_FLAG;
+
+    /* enable device */
+    i2c->CR1 |= I2C_CR1_PE;
+}
+
 i2c_slave_fsm_t i2c_slave;
 int i2c_slave_init(uint8_t addr) {
-    //i2c_config[0].dev->CR1 &= ~(I2C_CR1_PE);
-    /* configure slave addr (7 bits) */
-    i2c_config[0].dev->OAR1 &= ~(I2C_OAR1_OA1EN |I2C_OAR1_OA1);
-    i2c_config[0].dev->OAR1 |= I2C_OAR1_OA1EN | ((addr & 0x7F) << 1);
+    i2c_init(0);
+    _i2c_init_slave(0, addr);
     i2c_slave_reg(&i2c_slave, i2c_prepare, i2c_finish, 0, NULL);
-    //i2c_config[0].dev->CR1 |= I2C_CR1_PE;
     return 0;
 }
 
