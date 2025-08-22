@@ -51,17 +51,32 @@ def calculate_off(t, c, formula):
     return np.mean(np.sqrt(np.power((c_cal - c), 2)))
 
 
-lin_low = create_linear_formula(t_low, c_low)
-plot_formula(t_low, c_low, lin_low, "Calibration Extrapolation Linear Low")
+# lin_low = create_linear_formula(t_low, c_low)
+# plot_formula(t_low, c_low, lin_low, "Calibration Extrapolation Linear Low")
 
-lin_high = create_linear_formula(t_high, c_high)
-plot_formula(t_high, c_high, lin_high, "Calibration Extrapolation Linear High")
+# lin_high = create_linear_formula(t_high, c_high)
+# plot_formula(t_high, c_high, lin_high, "Calibration Extrapolation Linear High")
 
-poly_low, orders = create_poly_formula(t_low, c_low, 3)
-plot_formula(t_low, c_low, poly_low, "Calibration Extrapolation Poly Low")
+poly_low, orders_low = create_poly_formula(t_low, c_low, 3)
+# plot_formula(t_low, c_low, poly_low, "Calibration Extrapolation Poly Low")
 
-poly_high, orders = create_poly_formula(t_high, c_high, 3)
-plot_formula(t_high, c_high, poly_high, "Calibration Extrapolation Poly High")
+poly_high, orders_high = create_poly_formula(t_high, c_high, 3)
+# plot_formula(t_high, c_high, poly_high, "Calibration Extrapolation Poly High")
 
-temp = 23.2
-print(poly_low(temp), poly_high(temp))
+temps = np.arange(0,30.1, 0.1)
+lows = poly_low(temps)
+highs = poly_high(temps)
+
+with open("calibrations.csv", "w") as file:
+    import csv
+    writer = csv.writer(file)
+    writer.writerow(["Temperature", "Low uS", "High uS"])
+    for i in range(len(temps)):
+        writer.writerow([
+            f"{temps[i]:.3f}",
+            f"{lows[i]:.3f}",
+            f"{highs[i]:.3f}",
+        ])
+
+# temp = 23.2
+# print(poly_low(temp), poly_high(temp))

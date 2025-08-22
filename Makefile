@@ -1,3 +1,5 @@
+include Makefile.local
+
 # name of your application
 APPLICATION = default
 

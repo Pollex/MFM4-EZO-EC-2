@@ -1,8 +1,13 @@
 INCLUDES += -I$(RIOTBOARD)/common/stm32/include
 
-PROGRAMMERS_SUPPORTED += openocd 
-OPENOCD_CONFIG = openocd.cfg
-
-PORT_LINUX ?= /dev/ttyUSB0
-
 PROGRAMMER ?= openocd
+
+OPENOCD_DEBUG_ADAPTER ?= stlink
+STLINK_VERSION ?= 3
+
+ifeq (openocd,$(PROGRAMMER))
+  PORT_LINUX ?= /dev/ttyUSB0
+endif
+
+
+include $(RIOTMAKE)/boards/stm32.inc.mk
