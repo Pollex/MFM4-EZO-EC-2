@@ -200,3 +200,4 @@ hardware/*backup
 *.lck
 *.bkp
 Makefile.local
+fabrication/
