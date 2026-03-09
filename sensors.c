@@ -84,7 +84,6 @@ int sensors_get_conductivity(probe_t probe, uint32_t *out) {
             return result;
         }
         ztimer_sleep(ZTIMER_MSEC, 1000);
-        ezoec_measure(&ec, out);
     } else {
         printf("Warning: probe %c has no calibration\n",
                probe == PROBE_A ? 'A' : 'B');

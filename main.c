@@ -27,7 +27,7 @@
 // Flags
 // ==================================
 // measurement_t measurement = {0};
-struct __attribute__((packed)) {
+volatile struct __attribute__((packed)) {
     uint32_t conductivity_a;
     uint32_t conductivity_b;
     int16_t temperature_b;
@@ -53,7 +53,7 @@ static int mfm_comm_perform_measurement(void *arg);
 static const mfm_comm_params_t mfm_comm_params = {
     .firmware_version = FW_VERSION,
     .module_type = 0xFF,
-    .measurement_time = 12000,
+    .measurement_time = 15000,
     .sensor_count = 1,
     .sensor_init_fn = &mfm_comm_sensor_init,
     .perform_measurement_fn = &mfm_comm_perform_measurement,
@@ -188,7 +188,7 @@ int main(void) {
         case MSG_DO_MEASURE: {
             DEBUG("Sensor measure\n");
 
-            measurement_t measurement;
+            measurement_t measurement = {0};
 
             sensors_enable();
             ztimer_sleep(ZTIMER_MSEC, 10);
@@ -196,6 +196,9 @@ int main(void) {
             int result = sensors_init();
             if (result < 0) {
                 DEBUG("ERR(%d) sensors init\n", result);
+                sensors_disable();
+                mfm_comm_measurement_error(&mfm_comm, -result);
+                break;
             }
             result = sensors_trigger_temperature(PROBE_A);
             if (result < 0) {
@@ -209,21 +212,25 @@ int main(void) {
                 sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
             if (result < 0) {
                 DEBUG("ERR(%d) conduc A\n", result);
+                measurement.conductivity_a = 0;
             }
             result =
                 sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
             if (result < 0) {
                 DEBUG("ERR(%d) conduc B\n", result);
+                measurement.conductivity_b = 0;
             }
             result =
                 sensors_get_temperature(PROBE_A, &measurement.temperature_a);
             if (result < 0) {
                 DEBUG("ERR(%d) get temp A\n", result);
+                measurement.temperature_a = 0;
             }
             result =
                 sensors_get_temperature(PROBE_B, &measurement.temperature_b);
             if (result < 0) {
                 DEBUG("ERR(%d) get temp B\n", result);
+                measurement.temperature_b = 0;
             }
             sensors_disable();
 
@@ -232,7 +239,7 @@ int main(void) {
             wire_measurement.temperature_a = measurement.temperature_a;
             wire_measurement.temperature_b = measurement.temperature_b;
 
-            mfm_comm_measurement_finish(&mfm_comm, &wire_measurement,
+            mfm_comm_measurement_finish(&mfm_comm, (void *)&wire_measurement,
                                         sizeof(wire_measurement));
         } break;
         case TASK_CLEAR_BOOT_MAGIC:
