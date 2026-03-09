@@ -1,10 +1,9 @@
 #include "board.h"
 #include "config.h"
 #include "control.h"
-#include "i2c_slave.h"
+#include "mfm_comm.h"
 #include "msg.h"
 #include "periph/cpu_gpio.h"
-#include "periph/cpu_gpio_ll.h"
 #include "periph/gpio.h"
 #include "sched.h"
 #include "sensors.h"
@@ -15,8 +14,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/unistd.h>
 #include <ztimer.h>
 #define ENABLE_DEBUG 1
@@ -26,12 +23,81 @@
 #define FW_VERSION "NO_VER"
 #endif /* ifndef FW_VERSION */
 
-measurement_t measurement = {0};
-uint8_t do_measurement = 0;
-uint8_t measurement_status = STATUS_NOT_READY;
-uint8_t do_initialize = 0;
-uint8_t initialize_status = STATUS_NOT_READY;
+// ==================================
+// Flags
+// ==================================
+// measurement_t measurement = {0};
+struct __attribute__((packed)) {
+    uint32_t conductivity_a;
+    uint32_t conductivity_b;
+    int16_t temperature_b;
+    int16_t temperature_a;
+} wire_measurement = {0};
 kernel_pid_t main_thread_pid = 1;
+
+// ==================================
+// MSG Commands
+// ==================================
+typedef enum APP_MSG {
+    MSG_UNKNOWN,
+    MSG_MFR_INIT,
+    MSG_DO_MEASURE,
+} APP_MSG;
+
+// ==================================
+// MFM Communications
+// ==================================
+
+static int mfm_comm_sensor_init(void *arg);
+static int mfm_comm_perform_measurement(void *arg);
+static const mfm_comm_params_t mfm_comm_params = {
+    .firmware_version = FW_VERSION,
+    .module_type = 0xFF,
+    .measurement_time = 12000,
+    .sensor_count = 1,
+    .sensor_init_fn = &mfm_comm_sensor_init,
+    .perform_measurement_fn = &mfm_comm_perform_measurement,
+};
+static mfm_comm_t mfm_comm;
+
+/**
+ * @brief Called from an interrupt when the MFM tasks us to do a mfr sensor
+ * init.
+ *
+ * @param arg
+ * @return 0 on success, negative on error.
+ */
+static int mfm_comm_sensor_init(void *arg) {
+    (void)arg;
+
+    msg_t msg;
+
+    msg.type = MSG_MFR_INIT;
+    msg_try_send(&msg, main_thread_pid);
+
+    return 0;
+}
+
+/**
+ * @brief Called from an interrupt when the MFM tasks us to start a measurement.
+ *
+ * @param arg
+ * @return 0 on success, negative on error.
+ */
+static int mfm_comm_perform_measurement(void *arg) {
+    (void)arg;
+
+    msg_t msg;
+
+    msg.type = MSG_DO_MEASURE;
+    msg_try_send(&msg, main_thread_pid);
+
+    return 0;
+}
+
+// ==================================
+// Shell commands
+// ==================================
 
 static const shell_command_t shell_commands[] = {
     {"provision", "Full provisioning sequence for EC Module board",
@@ -45,17 +111,6 @@ static const shell_command_t shell_commands[] = {
     {"ec_cmd", "Debugging: send command to EZOEC module", cmd_ec_cmd},
     {NULL, NULL, NULL},
 };
-
-int read_slot_id(void) {
-    int id = 0;
-    if (gpio_read(MOD_ID1_PIN) > 0)
-        id |= 1 << 0;
-    if (gpio_read(MOD_ID2_PIN) > 0)
-        id |= 1 << 1;
-    if (gpio_read(MOD_ID3_PIN) > 0)
-        id += 3;
-    return id;
-}
 
 int main_shell(void) {
     sensors_init();
@@ -86,6 +141,10 @@ int should_boot_shell(void) {
     return 0;
 }
 
+// ==================================
+// Main routine
+// ==================================
+
 /*
  * The system's I2C is ready in about 1.10ms after poweron.
  * This is based on a GPIO SET after i2c_slave_init, on poweron the test pin
@@ -98,9 +157,6 @@ int main(void) {
     // gpio_init(PIN_TEST, GPIO_OUT);
     // gpio_set(PIN_TEST);
 
-    gpio_init(MOD_ID1_PIN, GPIO_IN);
-    gpio_init(MOD_ID2_PIN, GPIO_IN);
-    gpio_init(MOD_ID3_PIN, GPIO_IN);
     gpio_init(PRB_SEL_PIN, GPIO_OUT);
     gpio_init(BOOST_EN_PIN, GPIO_OUT);
     gpio_clear(BOOST_EN_PIN);
@@ -108,11 +164,8 @@ int main(void) {
     main_thread_pid = thread_getpid();
     msg_init_queue(_msg_queue, 4);
 
-    uint8_t slot_id = read_slot_id();
-    if (slot_id == 0)
-        slot_id = 1;
-    DEBUG("SLOT: 0x%02X\n", slot_id);
-    i2c_slave_init(0x10 + slot_id);
+    // Setup I2C with master.
+    mfm_comm_init(&mfm_comm, mfm_comm_params);
 
     // Duration: 0.35 ms
     config_init();
@@ -128,15 +181,18 @@ int main(void) {
         DEBUG("Wait msg\n");
         msg_receive(&msg);
         switch (msg.type) {
-        case TASK_SENSOR_INIT:
+        case MSG_MFR_INIT:
             DEBUG("Sensor init\n");
-            do_initialize = 0;
+            mfm_comm_sensor_init_finish(&mfm_comm);
             break;
-        case TASK_MEASUREMENT:
+        case MSG_DO_MEASURE: {
             DEBUG("Sensor measure\n");
-            measurement_status = STATUS_BUSY;
+
+            measurement_t measurement;
+
             sensors_enable();
             ztimer_sleep(ZTIMER_MSEC, 10);
+
             int result = sensors_init();
             if (result < 0) {
                 DEBUG("ERR(%d) sensors init\n", result);
@@ -171,9 +227,14 @@ int main(void) {
             }
             sensors_disable();
 
-            measurement_status = STATUS_READY;
-            do_measurement = 0;
-            break;
+            wire_measurement.conductivity_a = measurement.conductivity_a;
+            wire_measurement.conductivity_b = measurement.conductivity_b;
+            wire_measurement.temperature_a = measurement.temperature_a;
+            wire_measurement.temperature_b = measurement.temperature_b;
+
+            mfm_comm_measurement_finish(&mfm_comm, &wire_measurement,
+                                        sizeof(wire_measurement));
+        } break;
         case TASK_CLEAR_BOOT_MAGIC:
             PWR->CR |= PWR_CR_DBP;
             RTC->BKP0R = 0;

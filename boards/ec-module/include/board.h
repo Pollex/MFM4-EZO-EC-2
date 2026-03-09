@@ -19,9 +19,9 @@ extern "C" {
 
 #define BOOST_EN_PIN GPIO_PIN(PORT_B, 12)
 
-#define MOD_ID1_PIN GPIO_PIN(PORT_B, 9)
-#define MOD_ID2_PIN GPIO_PIN(PORT_B, 5)
-#define MOD_ID3_PIN GPIO_PIN(PORT_B, 8)
+#define MFM_COMM_ID1_PIN GPIO_PIN(PORT_B, 9)
+#define MFM_COMM_ID2_PIN GPIO_PIN(PORT_B, 5)
+#define MFM_COMM_ID3_PIN GPIO_PIN(PORT_B, 8)
 
 #ifdef __cplusplus
 }

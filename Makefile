@@ -23,7 +23,7 @@ USEMODULE += shell
 USEMODULE += stdio_uart ztimer ztimer_msec
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom periph_i2c
 
-USEMODULE += ezoec ds18 
+USEMODULE += ezoec ds18 mfm_comm
 # Change this to 0 show compiler invocation lines by default:
 QUIET ?= 1
 

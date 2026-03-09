@@ -3,7 +3,6 @@
 #include "modules/ezoec/include/ezoec.h"
 #include "periph/uart.h"
 #include "sensors.h"
-#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -341,6 +340,8 @@ int cmd_ec_cmd(int argc, char **argv) {
 int cmd_do_measurement(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
+    measurement_t measurement;
 
     puts("Triggering temperature sensors");
     int result = sensors_trigger_temperature(PROBE_A);
