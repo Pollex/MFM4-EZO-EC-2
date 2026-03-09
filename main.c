@@ -36,6 +36,20 @@ volatile struct __attribute__((packed)) {
 kernel_pid_t main_thread_pid = 1;
 
 // ==================================
+// Errors (bit flags for multiple failures)
+// ==================================
+typedef enum APP_ERROR {
+    ERR_NONE = 0,
+    ERR_SENSOR_INIT = (1 << 0),    // Sensor initialization failed
+    ERR_TEMP_A_TRIGGER = (1 << 1), // Temperature A trigger failed
+    ERR_TEMP_B_TRIGGER = (1 << 2), // Temperature B trigger failed
+    ERR_CONDUCTIVITY_A = (1 << 3), // Conductivity probe A failed
+    ERR_CONDUCTIVITY_B = (1 << 4), // Conductivity probe B failed
+    ERR_TEMP_A_READ = (1 << 5),    // Temperature A read failed
+    ERR_TEMP_B_READ = (1 << 6),    // Temperature B read failed
+} APP_ERROR;
+
+// ==================================
 // MSG Commands
 // ==================================
 typedef enum APP_MSG {
@@ -189,6 +203,7 @@ int main(void) {
             DEBUG("Sensor measure\n");
 
             measurement_t measurement = {0};
+            uint8_t error_flags = ERR_NONE;
 
             sensors_enable();
             ztimer_sleep(ZTIMER_MSEC, 10);
@@ -197,42 +212,53 @@ int main(void) {
             if (result < 0) {
                 DEBUG("ERR(%d) sensors init\n", result);
                 sensors_disable();
-                mfm_comm_measurement_error(&mfm_comm, -result);
+                mfm_comm_measurement_error(&mfm_comm, ERR_SENSOR_INIT);
                 break;
             }
             result = sensors_trigger_temperature(PROBE_A);
             if (result < 0) {
                 DEBUG("ERR(%d) trigger temp A\n", result);
+                error_flags |= ERR_TEMP_A_TRIGGER;
             }
             result = sensors_trigger_temperature(PROBE_B);
             if (result < 0) {
                 DEBUG("ERR(%d) trigger temp B\n", result);
+                error_flags |= ERR_TEMP_B_TRIGGER;
             }
             result =
                 sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
             if (result < 0) {
                 DEBUG("ERR(%d) conduc A\n", result);
                 measurement.conductivity_a = 0;
+                error_flags |= ERR_CONDUCTIVITY_A;
             }
             result =
                 sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
             if (result < 0) {
                 DEBUG("ERR(%d) conduc B\n", result);
                 measurement.conductivity_b = 0;
+                error_flags |= ERR_CONDUCTIVITY_B;
             }
             result =
                 sensors_get_temperature(PROBE_A, &measurement.temperature_a);
             if (result < 0) {
                 DEBUG("ERR(%d) get temp A\n", result);
                 measurement.temperature_a = 0;
+                error_flags |= ERR_TEMP_A_READ;
             }
             result =
                 sensors_get_temperature(PROBE_B, &measurement.temperature_b);
             if (result < 0) {
                 DEBUG("ERR(%d) get temp B\n", result);
                 measurement.temperature_b = 0;
+                error_flags |= ERR_TEMP_B_READ;
             }
             sensors_disable();
+
+            // Report any errors.
+            if (error_flags != ERR_NONE) {
+                mfm_comm_measurement_error(&mfm_comm, error_flags);
+            }
 
             wire_measurement.conductivity_a = measurement.conductivity_a;
             wire_measurement.conductivity_b = measurement.conductivity_b;
