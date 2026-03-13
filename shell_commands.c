@@ -445,12 +445,34 @@ int cmd_save(int argc, char **argv) {
 int cmd_set_k(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
     if (argc < 3) {
         printf(
             "Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n",
             argv[0]);
         return 0;
     }
+
+    uint8_t probe = PROBE_A;
+    if (argv[1][0] == 'a' || argv[1][0] == 'A') {
+        probe = PROBE_A;
+    } else if (argv[1][0] == 'b' || argv[1][0] == 'B') {
+        probe = PROBE_B;
+    } else {
+        printf(
+            "Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n",
+            argv[0]);
+        return 0;
+    }
+
+    int k_value;
+retry_k:
+    k_value = _read_kvalue();
+    if (k_value < 0) {
+        printf("error(%d), try again\n", k_value);
+        goto retry_k;
+    }
+    eeprom_config.k_values[probe] = k_value;
 
     return 0;
 }

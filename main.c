@@ -87,7 +87,10 @@ static int mfm_comm_sensor_init(void *arg) {
     msg_t msg;
 
     msg.type = MSG_MFR_INIT;
-    msg_try_send(&msg, main_thread_pid);
+    if (msg_try_send(&msg, main_thread_pid) != 1) {
+        DEBUG("mfm_comm sensor init msg not sent.");
+        return -1; // Action was not sent.
+    };
 
     return 0;
 }
@@ -104,7 +107,10 @@ static int mfm_comm_perform_measurement(void *arg) {
     msg_t msg;
 
     msg.type = MSG_DO_MEASURE;
-    msg_try_send(&msg, main_thread_pid);
+    if (msg_try_send(&msg, main_thread_pid) != 1) {
+        DEBUG("mfm_comm perform msg not sent.");
+        return -1; // Action was not sent.
+    };
 
     return 0;
 }
@@ -166,7 +172,7 @@ int should_boot_shell(void) {
  */
 
 #define PIN_TEST GPIO_PIN(PORT_A, 15)
-static msg_t _msg_queue[4] = {0};
+static msg_t _msg_queue[8] = {0};
 int main(void) {
     // gpio_init(PIN_TEST, GPIO_OUT);
     // gpio_set(PIN_TEST);
@@ -176,7 +182,7 @@ int main(void) {
     gpio_clear(BOOST_EN_PIN);
 
     main_thread_pid = thread_getpid();
-    msg_init_queue(_msg_queue, 4);
+    msg_init_queue(_msg_queue, 8);
 
     // Setup I2C with master.
     mfm_comm_init(&mfm_comm, mfm_comm_params);
@@ -215,6 +221,7 @@ int main(void) {
                 mfm_comm_measurement_error(&mfm_comm, ERR_SENSOR_INIT);
                 break;
             }
+
             result = sensors_trigger_temperature(PROBE_A);
             if (result < 0) {
                 DEBUG("ERR(%d) trigger temp A\n", result);

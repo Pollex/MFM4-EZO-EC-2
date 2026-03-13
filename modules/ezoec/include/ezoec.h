@@ -1,8 +1,10 @@
 #ifndef EZOEC_H
 #define EZOEC_H
 
-#include "ringbuffer.h"
+#include "mutex.h"
+#include "tsrb.h"
 #include <stdint.h>
+#include <sys/types.h>
 
 #define RX_MAX_LINE_LEN 42
 #define RX_BUFFER_SIZE RX_MAX_LINE_LEN * 3
@@ -20,8 +22,10 @@ typedef struct {
 
 typedef struct {
     ezoec_params_t params;
-    char rx_buffer[RX_BUFFER_SIZE];
-    ringbuffer_t rx_ringbuffer;
+    uint8_t rx_buffer[RX_BUFFER_SIZE];
+    tsrb_t rx_ringbuffer;
+    pid_t rx_thread;
+    mutex_t readline_lock;
 } ezoec_t;
 
 typedef struct {

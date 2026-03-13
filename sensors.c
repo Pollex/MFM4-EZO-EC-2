@@ -16,15 +16,21 @@ int sensors_init(void) {
     int result = ezoec_init(&ec, &ec_params);
     if (result < 0) {
         printf("EZOEC Initialization error: %d\n", result);
+        return -1;
     }
+
     result = ds18_init(&t1, &t1_params);
     if (result < 0) {
         printf("DS18B20 A Initialization error: %d\n", result);
+        return -1;
     }
+
     result = ds18_init(&t2, &t2_params);
     if (result < 0) {
         printf("DS18B20 B Initialization error: %d\n", result);
+        return -1;
     }
+
     return 0;
 }
 
@@ -83,6 +89,7 @@ int sensors_get_conductivity(probe_t probe, uint32_t *out) {
         if (result < 0) {
             return result;
         }
+        // TODO: Add justification for 1s delay.
         ztimer_sleep(ZTIMER_MSEC, 1000);
     } else {
         printf("Warning: probe %c has no calibration\n",

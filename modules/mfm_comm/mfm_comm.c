@@ -275,6 +275,7 @@ void write_init_start(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
     if (result < 0) {
         comm->error              = -result;
         comm->sensor_init_status = COMMAND_ERROR;
+        return;
     }
 
     // From this point the usercode MUST call mfm_comm_sensor_init_finish(...) or error.
@@ -292,6 +293,7 @@ void write_meas_start(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
     if (result < 0) {
         comm->error              = -result;
         comm->measurement_status = COMMAND_ERROR;
+        return;
     }
 
     // From this point the usercode MUST call mfm_comm_measurement_finish(...) or error.

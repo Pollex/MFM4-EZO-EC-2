@@ -1,12 +1,15 @@
 #include "include/ezoec.h"
+#include "mutex.h"
 #include "periph/uart.h"
-#include "ringbuffer.h"
+#include "thread.h"
+#include "thread_flags.h"
+#include "tsrb.h"
 #include "ztimer.h"
-#include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/errno.h>
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
@@ -16,7 +19,6 @@
 #define MAX_DECIMALS 3
 #define DEV UART_DEV(ec->params.uart)
 
-void _clear_ringbuffer(ezoec_t *ec);
 char *_int_to_string(uint8_t k, uint8_t precision);
 
 enum {
@@ -33,10 +35,12 @@ enum {
 
 #define MAX_STATUS_LEN 6
 static int _read_status(ezoec_t *ec, uint32_t timeout) {
-    while (!ringbuffer_empty(&ec->rx_ringbuffer) &&
-           ringbuffer_peek_one(&ec->rx_ringbuffer) != '*') {
-        ringbuffer_get_one(&ec->rx_ringbuffer);
+    // Wait for first status messsage (prefixed by *)
+    while (!tsrb_empty(&ec->rx_ringbuffer) &&
+           tsrb_peek_one(&ec->rx_ringbuffer) != '*') {
+        tsrb_get_one(&ec->rx_ringbuffer);
     }
+
     char status[MAX_STATUS_LEN] = {0};
     int len = ezoec_readline(ec, status, MAX_STATUS_LEN, timeout);
     if (len < 0) {
@@ -64,15 +68,18 @@ static int _read_status(ezoec_t *ec, uint32_t timeout) {
     return -1;
 }
 
+#define FLAG_RX_DATA (1u << 0)
 static void on_ezoec_receive(void *arg, uint8_t data) {
     ezoec_t *ec = (ezoec_t *)arg;
-    ringbuffer_add_one(&ec->rx_ringbuffer, data);
+    tsrb_add_one(&ec->rx_ringbuffer, data);
+    thread_flags_set(thread_get(ec->rx_thread), FLAG_RX_DATA);
 }
 
 int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     ec->params = *params;
+    mutex_init(&ec->readline_lock);
 
-    ringbuffer_init(&ec->rx_ringbuffer, ec->rx_buffer, sizeof(ec->rx_buffer));
+    tsrb_init(&ec->rx_ringbuffer, ec->rx_buffer, sizeof(ec->rx_buffer));
 
     int result = uart_init(DEV, ec->params.baud_rate, on_ezoec_receive, ec);
     if (result < 0) {
@@ -256,7 +263,7 @@ int ezoec_writeline(ezoec_t *ec, const char *format, ...) {
     int len = vsnprintf(txbuf, sizeof(txbuf) - 1, format, args);
     va_end(args);
     txbuf[len++] = '\r';
-    _clear_ringbuffer(ec);
+    tsrb_clear(&ec->rx_ringbuffer);
     uart_write(DEV, (uint8_t *)txbuf, len);
 
     return 0;
@@ -272,7 +279,7 @@ int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format,
     va_end(args);
     txbuf[len++] = '\r';
 
-    _clear_ringbuffer(ec);
+    tsrb_clear(&ec->rx_ringbuffer);
     uart_write(DEV, (uint8_t *)txbuf, len);
 #if ENABLE_DEBUG
     fwrite(txbuf, len, 1, stdout);
@@ -295,20 +302,36 @@ int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format,
 }
 
 int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
-    ringbuffer_t *rb = &ec->rx_ringbuffer;
+    // Ensure only one readline function can be active at a time.
+    mutex_lock(&ec->readline_lock);
+
     char *ptr = buf;
 
-    ztimer_acquire(ZTIMER_MSEC);
-    uint32_t start = ztimer_now(ZTIMER_MSEC);
-
     int result = 0;
+    ztimer_t timer;
+    ec->rx_thread = thread_getpid();
+
     for (;;) {
-        if ((ztimer_now(ZTIMER_MSEC) - start) > timeout) {
-            result = -ETIMEDOUT;
-            break;
+        // If there is no uart data in the buffer, we'll wait for some to appear, or timeout.
+        if (tsrb_avail(&ec->rx_ringbuffer) == 0) {
+            ztimer_set_timeout_flag(ZTIMER_MSEC, &timer, timeout);
+
+            // Wait for flag and clear it. Returns the flags that were set.
+            int flags =
+                thread_flags_wait_any(FLAG_RX_DATA | THREAD_FLAG_TIMEOUT);
+
+            // Make sure to remove the timer if it didn't fire already. Noop if it did.
+            ztimer_remove(ZTIMER_MSEC, &timer);
+
+            // If there is no RX_DATA flag set, but it has timed out, we exit.
+            if ((flags & FLAG_RX_DATA) == 0 &&
+                (flags & THREAD_FLAG_TIMEOUT) > 0) {
+                result = -ETIMEDOUT;
+                break;
+            }
         }
 
-        int data = ringbuffer_get_one(rb);
+        int data = tsrb_get_one(&ec->rx_ringbuffer);
         if (data < 0) {
             continue;
         }
@@ -330,6 +353,7 @@ int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
         }
     }
 
+    mutex_unlock(&ec->readline_lock);
     ztimer_release(ZTIMER_MSEC);
     return result;
 }
@@ -379,9 +403,4 @@ char *_int_to_string(uint8_t k, uint8_t precision) {
         }
     }
     return ptr + 1;
-}
-
-void _clear_ringbuffer(ezoec_t *ec) {
-    ec->rx_ringbuffer.start = 0;
-    ec->rx_ringbuffer.avail = 0;
 }
