@@ -7,7 +7,7 @@
 #include <sys/types.h>
 
 #define RX_MAX_LINE_LEN 42
-#define RX_BUFFER_SIZE RX_MAX_LINE_LEN * 3
+#define RX_BUFFER_SIZE 128
 #define EZOEC_CALIBRATION_LINE_LENGTH 12
 #define EZOEC_CALIBRATION_MAX_LINES 10
 

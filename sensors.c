@@ -54,6 +54,7 @@ int sensors_get_temperature(probe_t probe, int16_t *out) {
         t = &t2;
     }
     int result = ds18_read(t, out);
+    *out = 0;
     if (result < 0) {
         return result;
     }
@@ -67,6 +68,7 @@ static int switch_probe(uint8_t index) {
 
 int sensors_get_conductivity(probe_t probe, uint32_t *out) {
     int result;
+    *out = 0;
 
     // Switch probe
     switch_probe(probe);
@@ -98,7 +100,9 @@ int sensors_get_conductivity(probe_t probe, uint32_t *out) {
 
     result = ezoec_measure(&ec, out);
     if (result < 0) {
+        *out = 0;
         return result;
     }
+
     return 0;
 }

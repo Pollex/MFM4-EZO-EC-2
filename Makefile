@@ -20,7 +20,7 @@ CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(4*THREAD_STACKSIZE_DEFAULT\) -DFW_VERSION=\"
 
 USEMODULE += shell
 # additional modules for debugging:
-USEMODULE += stdio_uart ztimer ztimer_msec
+USEMODULE += stdio_uart ztimer ztimer_msec core_thread_flags
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom periph_i2c
 
 USEMODULE += ezoec ds18 mfm_comm

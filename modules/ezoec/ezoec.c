@@ -354,7 +354,6 @@ int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
     }
 
     mutex_unlock(&ec->readline_lock);
-    ztimer_release(ZTIMER_MSEC);
     return result;
 }
 
