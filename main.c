@@ -120,7 +120,7 @@ static int mfm_comm_perform_measurement(void *arg) {
 // ==================================
 
 static const shell_command_t shell_commands[] = {
-    {"provision", "Full provisioning sequence for EC Module board",
+    {"provision", "Full provisioning sequence for EC Module board [A|B]",
      cmd_provision},
     {"measure", "Performs a full measurement", cmd_do_measurement},
     {"export", "Exports the currently loaded configuration", cmd_config_export},
@@ -222,43 +222,55 @@ int main(void) {
                 break;
             }
 
-            result = sensors_trigger_temperature(PROBE_A);
-            if (result < 0) {
-                DEBUG("ERR(%d) trigger temp A\n", result);
-                error_flags |= ERR_TEMP_A_TRIGGER;
+            if (config_has_calibration(PROBE_A)) {
+                result = sensors_trigger_temperature(PROBE_A);
+                if (result < 0) {
+                    DEBUG("ERR(%d) trigger temp A\n", result);
+                    error_flags |= ERR_TEMP_A_TRIGGER;
+                }
             }
-            result = sensors_trigger_temperature(PROBE_B);
-            if (result < 0) {
-                DEBUG("ERR(%d) trigger temp B\n", result);
-                error_flags |= ERR_TEMP_B_TRIGGER;
+            if (config_has_calibration(PROBE_B)) {
+                result = sensors_trigger_temperature(PROBE_B);
+                if (result < 0) {
+                    DEBUG("ERR(%d) trigger temp B\n", result);
+                    error_flags |= ERR_TEMP_B_TRIGGER;
+                }
             }
-            result =
-                sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
-            if (result < 0) {
-                DEBUG("ERR(%d) conduc A\n", result);
-                measurement.conductivity_a = 0;
-                error_flags |= ERR_CONDUCTIVITY_A;
+            if (config_has_calibration(PROBE_A)) {
+                result = sensors_get_conductivity(PROBE_A,
+                                                  &measurement.conductivity_a);
+                if (result < 0) {
+                    DEBUG("ERR(%d) conduc A\n", result);
+                    measurement.conductivity_a = 0;
+                    error_flags |= ERR_CONDUCTIVITY_A;
+                }
             }
-            result =
-                sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
-            if (result < 0) {
-                DEBUG("ERR(%d) conduc B\n", result);
-                measurement.conductivity_b = 0;
-                error_flags |= ERR_CONDUCTIVITY_B;
+            if (config_has_calibration(PROBE_B)) {
+                result = sensors_get_conductivity(PROBE_B,
+                                                  &measurement.conductivity_b);
+                if (result < 0) {
+                    DEBUG("ERR(%d) conduc B\n", result);
+                    measurement.conductivity_b = 0;
+                    error_flags |= ERR_CONDUCTIVITY_B;
+                }
             }
-            result =
-                sensors_get_temperature(PROBE_A, &measurement.temperature_a);
-            if (result < 0) {
-                DEBUG("ERR(%d) get temp A\n", result);
-                measurement.temperature_a = 0;
-                error_flags |= ERR_TEMP_A_READ;
+            if (config_has_calibration(PROBE_A)) {
+                result = sensors_get_temperature(PROBE_A,
+                                                 &measurement.temperature_a);
+                if (result < 0) {
+                    DEBUG("ERR(%d) get temp A\n", result);
+                    measurement.temperature_a = 0;
+                    error_flags |= ERR_TEMP_A_READ;
+                }
             }
-            result =
-                sensors_get_temperature(PROBE_B, &measurement.temperature_b);
-            if (result < 0) {
-                DEBUG("ERR(%d) get temp B\n", result);
-                measurement.temperature_b = 0;
-                error_flags |= ERR_TEMP_B_READ;
+            if (config_has_calibration(PROBE_B)) {
+                result = sensors_get_temperature(PROBE_B,
+                                                 &measurement.temperature_b);
+                if (result < 0) {
+                    DEBUG("ERR(%d) get temp B\n", result);
+                    measurement.temperature_b = 0;
+                    error_flags |= ERR_TEMP_B_READ;
+                }
             }
             sensors_disable();
 

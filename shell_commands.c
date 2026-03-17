@@ -160,8 +160,19 @@ static int32_t _read_kvalue(void) { return _read_int(1); }
 #define CAL_TOLERANCE_LOW_uS 1000
 #define CAL_TOLERANCE_HIGH_uS 1000
 int cmd_provision(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    int calibrate_a = 1;
+    int calibrate_b = 1;
+
+    if (argc >= 2) {
+        if (argv[1][0] == 'A' || argv[1][0] == 'a') {
+            calibrate_b = 0;
+        } else if (argv[1][0] == 'B' || argv[1][0] == 'b') {
+            calibrate_a = 0;
+        } else {
+            printf("Usage: %s [A|B]\n", argv[0]);
+            return -1;
+        }
+    }
 
     puts("1. Fixing EZOEC configuration");
     ezoec_params_t params = {
@@ -204,27 +215,34 @@ int cmd_provision(int argc, char **argv) {
     }
     puts("Disabled EZOEC LED");
 
-retry_ka:
-    puts("2. K-Value of probe A: ");
-    int k_value = _read_kvalue();
-    if (k_value < 0) {
-        printf("error(%d), try again\n", k_value);
-        goto retry_ka;
+    int k_value;
+    if (calibrate_a) {
+    retry_ka:
+        puts("2. K-Value of probe A: ");
+        k_value = _read_kvalue();
+        if (k_value < 0) {
+            printf("error(%d), try again\n", k_value);
+            goto retry_ka;
+        }
+        eeprom_config.k_values[0] = k_value;
+        printf("Got %s\n", _int_to_string(k_value, 1, NULL));
     }
-    eeprom_config.k_values[0] = k_value;
-    printf("Got %s\n", _int_to_string(k_value, 1, NULL));
 
-retry_kb:
-    puts("3. K-Value of probe B: ");
-    k_value = _read_kvalue();
-    if (k_value < 0) {
-        printf("error(%d), try again\n", k_value);
-        goto retry_kb;
+    if (calibrate_b) {
+    retry_kb:
+        puts("3. K-Value of probe B: ");
+        k_value = _read_kvalue();
+        if (k_value < 0) {
+            printf("error(%d), try again\n", k_value);
+            goto retry_kb;
+        }
+        eeprom_config.k_values[1] = k_value;
+        printf("Got %s\n", _int_to_string(k_value, 1, NULL));
     }
-    eeprom_config.k_values[1] = k_value;
-    printf("Got %s\n", _int_to_string(k_value, 1, NULL));
 
     for (int probe = 0; probe < 2; probe++) {
+        if (probe == PROBE_A && !calibrate_a) continue;
+        if (probe == PROBE_B && !calibrate_b) continue;
         printf("Switching to probe: %c (K: %s)\n", probe == 0 ? 'A' : 'B',
                _int_to_string(eeprom_config.k_values[probe], 1, NULL));
         switch_probe(probe);
