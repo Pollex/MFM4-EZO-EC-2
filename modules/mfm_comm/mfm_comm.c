@@ -278,7 +278,8 @@ void write_init_start(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
         return;
     }
 
-    // From this point the usercode MUST call mfm_comm_sensor_init_finish(...) or error.
+    // From this point the usercode MUST call mfm_comm_sensor_init_finish(...)
+    // or error.
 }
 
 void write_meas_start(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
@@ -296,7 +297,8 @@ void write_meas_start(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
         return;
     }
 
-    // From this point the usercode MUST call mfm_comm_measurement_finish(...) or error.
+    // From this point the usercode MUST call mfm_comm_measurement_finish(...)
+    // or error.
 }
 
 void write_meas_time(mfm_comm_t *comm, uint8_t *data, uint8_t len) {
@@ -423,7 +425,7 @@ int read_slot_id(void) {
 #if !defined(MFM_COMM_ID1_PIN) || !defined(MFM_COMM_ID2_PIN) || !defined(MFM_COMM_ID3_PIN)
     return 0;
 #else
-    int id = 0;
+    int id = 0x10;
     if (gpio_read(MFM_COMM_ID1_PIN) > 0)
         id |= 1 << 0;
     if (gpio_read(MFM_COMM_ID2_PIN) > 0)
@@ -439,16 +441,19 @@ kernel_pid_t mfm_comm_init(mfm_comm_t *comm, const mfm_comm_params_t params) {
     comm->is_already_initialized = 1;
 
     comm->params = params;
-    DEBUG("[%s] registering slave\n", __func__);
+    DEBUG("[%s] r slv\n", __func__);
     i2c_slave_reg(&i2c_slave, i2c_prepare, i2c_finish, 0, comm);
 
 #if !defined(MFM_COMM_ID1_PIN) || !defined(MFM_COMM_ID2_PIN) || !defined(MFM_COMM_ID3_PIN)
-#warning "MFM_COMM module is being used but no MFM_COMM_IDx_PIN defines are set. The module is only addressable on the preconfigured address in the periph_config of the i2c slave."
+#warning                                                                                                               \
+    "MFM_COMM module is being used but no MFM_COMM_IDx_PIN defines are set. The module is only addressable on the preconfigured address in the periph_config of the i2c slave."
 #else
     gpio_init(MFM_COMM_ID1_PIN, GPIO_IN);
     gpio_init(MFM_COMM_ID2_PIN, GPIO_IN);
     gpio_init(MFM_COMM_ID3_PIN, GPIO_IN);
-    i2c_set_addr(params.dev, read_slot_id(), 0, 0);
+    uint16_t slot_id = read_slot_id();
+    i2c_set_addr(params.dev, slot_id, 0, 0);
+    DEBUG("[%s] addr %d\n", __func__, slot_id);
 #endif
 
     return 0;

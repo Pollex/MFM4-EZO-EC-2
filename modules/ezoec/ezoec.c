@@ -11,13 +11,13 @@
 #include <string.h>
 #include <sys/errno.h>
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 #define ASSERT_OK_TIMEOUT 2500
-#define TX_MAX_LINE_LEN 42
-#define MAX_DECIMALS 3
-#define DEV UART_DEV(ec->params.uart)
+#define TX_MAX_LINE_LEN   42
+#define MAX_DECIMALS      3
+#define DEV               UART_DEV(ec->params.uart)
 
 char *_int_to_string(uint8_t k, uint8_t precision);
 
@@ -36,13 +36,12 @@ enum {
 #define MAX_STATUS_LEN 6
 static int _read_status(ezoec_t *ec, uint32_t timeout) {
     // Wait for first status messsage (prefixed by *)
-    while (!tsrb_empty(&ec->rx_ringbuffer) &&
-           tsrb_peek_one(&ec->rx_ringbuffer) != '*') {
+    while (!tsrb_empty(&ec->rx_ringbuffer) && tsrb_peek_one(&ec->rx_ringbuffer) != '*') {
         tsrb_get_one(&ec->rx_ringbuffer);
     }
 
     char status[MAX_STATUS_LEN] = {0};
-    int len = ezoec_readline(ec, status, MAX_STATUS_LEN, timeout);
+    int len                     = ezoec_readline(ec, status, MAX_STATUS_LEN, timeout);
     if (len < 0) {
         return len;
     }
@@ -83,15 +82,14 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
 
     int result = uart_init(DEV, ec->params.baud_rate, on_ezoec_receive, ec);
     if (result < 0) {
-        DEBUG("[%s]: Could not init uart at %d: %d\n", __func__,
-              ec->params.baud_rate, result);
+        DEBUG("[%s]: Could not init uart at %d: %d\n", __func__, ec->params.baud_rate, result);
         return result;
     }
     uart_write(DEV, (const uint8_t *)"\r", 1);
     ezoec_assert_ok(ec);
 
     char version[15] = {0};
-    result = ezoec_cmd(ec, 500, version, "i");
+    result           = ezoec_cmd(ec, 500, version, "i");
     if (result < 0) {
         DEBUG("[%s]: Could not get version: %d\n", __func__, result);
         return result;
@@ -109,9 +107,7 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     return 0;
 }
 
-int ezoec_set_baud(ezoec_t *ec, unsigned int baud) {
-    return ezoec_cmd(ec, 0, NULL, "Baud,%d", baud);
-}
+int ezoec_set_baud(ezoec_t *ec, unsigned int baud) { return ezoec_cmd(ec, 0, NULL, "Baud,%d", baud); }
 
 int ezoec_factory(ezoec_t *ec) {
     uart_write(DEV, (const uint8_t *)"Factory\r", sizeof("Factory\r"));
@@ -138,24 +134,22 @@ int ezoec_factory(ezoec_t *ec) {
     return 0;
 }
 
-int ezoec_set_k(ezoec_t *ec, uint8_t k_value) {
-    return ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(k_value, 1));
-}
+int ezoec_set_k(ezoec_t *ec, uint8_t k_value) { return ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(k_value, 1)); }
 
 int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
     char rx[RX_MAX_LINE_LEN] = {0};
-    int rx_len = ezoec_cmd(ec, 2000, rx, "R");
+    int rx_len               = ezoec_cmd(ec, 2000, rx, "R");
     if (rx_len < 0) {
         return rx_len;
     }
 
     // Convert to int
     char *ptr_start = rx;
-    char *ptr_end = ptr_start + rx_len;
-    char *ptr = ptr_start;
+    char *ptr_end   = ptr_start + rx_len;
+    char *ptr       = ptr_start;
 
     //
-    *out_nS = 0;
+    *out_nS          = 0;
     uint8_t decimals = 0;
     while (ptr < ptr_end) {
         if (*ptr == '.') {
@@ -178,7 +172,7 @@ int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
 
 int ezoec_is_calibrated(ezoec_t *ec) {
     char rx[RX_MAX_LINE_LEN] = {0};
-    int result = ezoec_cmd(ec, 100, rx, "Cal,?");
+    int result               = ezoec_cmd(ec, 100, rx, "Cal,?");
     if (result < 0) {
         return result;
     }
@@ -187,13 +181,9 @@ int ezoec_is_calibrated(ezoec_t *ec) {
 
 int ezoec_cal_dry(ezoec_t *ec) { return ezoec_cmd(ec, 0, NULL, "Cal,dry"); }
 
-int ezoec_cal_low(ezoec_t *ec, uint32_t uS) {
-    return ezoec_cmd(ec, 0, NULL, "Cal,low,%d", uS);
-}
+int ezoec_cal_low(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, "Cal,low,%d", uS); }
 
-int ezoec_cal_high(ezoec_t *ec, uint32_t uS) {
-    return ezoec_cmd(ec, 0, NULL, "Cal,high,%d", uS);
-}
+int ezoec_cal_high(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, "Cal,high,%d", uS); }
 
 int ezoec_cal_import(ezoec_t *ec, ezoec_calibration_t *cal) {
     int result = 0;
@@ -207,7 +197,7 @@ int ezoec_cal_import(ezoec_t *ec, ezoec_calibration_t *cal) {
 
     // Wait for reset
     char rxBuffer[13] = {0};
-    result = ezoec_readline(ec, rxBuffer, 12, 2000);
+    result            = ezoec_readline(ec, rxBuffer, 12, 2000);
     if (result < 0) {
         DEBUG("[%s]: Error waiting for reset: %d\n", __func__, result);
         return result;
@@ -233,7 +223,7 @@ int ezoec_cal_import(ezoec_t *ec, ezoec_calibration_t *cal) {
 }
 
 int ezoec_cal_export(ezoec_t *ec, ezoec_calibration_t *cal) {
-    int result = 0;
+    int result                                       = 0;
     char rxBuffer[EZOEC_CALIBRATION_LINE_LENGTH + 1] = {0};
     for (int line = 0; line < EZOEC_CALIBRATION_MAX_LINES + 1; line++) {
         result = ezoec_cmd(ec, 1000, rxBuffer, "Export");
@@ -269,8 +259,7 @@ int ezoec_writeline(ezoec_t *ec, const char *format, ...) {
     return 0;
 }
 
-int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format,
-              ...) {
+int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format, ...) {
     static char txbuf[TX_MAX_LINE_LEN] = {0};
 
     va_list args;
@@ -312,20 +301,20 @@ int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout) {
     ec->rx_thread = thread_getpid();
 
     for (;;) {
-        // If there is no uart data in the buffer, we'll wait for some to appear, or timeout.
+        // If there is no uart data in the buffer, we'll wait for some to
+        // appear, or timeout.
         if (tsrb_avail(&ec->rx_ringbuffer) == 0) {
             ztimer_set_timeout_flag(ZTIMER_MSEC, &timer, timeout);
 
             // Wait for flag and clear it. Returns the flags that were set.
-            int flags =
-                thread_flags_wait_any(FLAG_RX_DATA | THREAD_FLAG_TIMEOUT);
+            int flags = thread_flags_wait_any(FLAG_RX_DATA | THREAD_FLAG_TIMEOUT);
 
-            // Make sure to remove the timer if it didn't fire already. Noop if it did.
+            // Make sure to remove the timer if it didn't fire already. Noop if
+            // it did.
             ztimer_remove(ZTIMER_MSEC, &timer);
 
             // If there is no RX_DATA flag set, but it has timed out, we exit.
-            if ((flags & FLAG_RX_DATA) == 0 &&
-                (flags & THREAD_FLAG_TIMEOUT) > 0) {
+            if ((flags & FLAG_RX_DATA) == 0 && (flags & THREAD_FLAG_TIMEOUT) > 0) {
                 result = -ETIMEDOUT;
                 break;
             }
@@ -387,7 +376,7 @@ read_status:
 char *_int_to_string(uint8_t k, uint8_t precision) {
     enum { buf_len = 10 };
     static char buf[buf_len + 1] = {0};
-    char *ptr = &buf[buf_len - 1];
+    char *ptr                    = &buf[buf_len - 1];
 
     int decimals = 0;
     while (k > 0) {

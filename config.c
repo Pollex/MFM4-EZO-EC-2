@@ -2,8 +2,8 @@
 #include "periph/eeprom.h"
 #include "sensors.h"
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 eeprom_config_t eeprom_config = {0};
 
@@ -22,12 +22,12 @@ int config_init(void) {
         config_clear();
         config_persist();
     }
-    if (!config_has_calibration(PROBE_A)) {
-        puts("!!! NOTICE: Probe A is not calibrated");
-    }
-    if (!config_has_calibration(PROBE_B)) {
-        puts("!!! NOTICE: Probe B is not calibrated");
-    }
+    // if (!config_has_calibration(PROBE_A)) {
+    //     puts("!!! NOTICE: Probe A is not calibrated");
+    // }
+    // if (!config_has_calibration(PROBE_B)) {
+    //     puts("!!! NOTICE: Probe B is not calibrated");
+    // }
     return 0;
 }
 
@@ -37,6 +37,4 @@ int config_clear(void) {
     return 0;
 }
 
-int config_persist(void) {
-    return eeprom_write(0, &eeprom_config, sizeof(eeprom_config));
-}
+int config_persist(void) { return eeprom_write(0, &eeprom_config, sizeof(eeprom_config)); }

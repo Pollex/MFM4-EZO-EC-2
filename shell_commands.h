@@ -13,6 +13,7 @@ int cmd_switch_probe(int argc, char **argv);
 int cmd_save(int argc, char **argv);
 int cmd_set_k(int argc, char **argv);
 int cmd_factory_reset(int argc, char **argv);
+int cmd_boost(int argc, char **argv);
 
 #ifdef __cplusplus
 } /* extern "C" */

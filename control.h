@@ -5,8 +5,8 @@
 
 enum {
     STATUS_NOT_READY = 0,
-    STATUS_BUSY = 1,
-    STATUS_READY = 0x0A,
+    STATUS_BUSY      = 1,
+    STATUS_READY     = 0x0A,
 };
 
 enum {

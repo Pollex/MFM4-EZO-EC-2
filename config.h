@@ -6,7 +6,7 @@
 
 #define CFG_FLAG_A_CALIBRATED (1 << 0)
 #define CFG_FLAG_B_CALIBRATED (1 << 1)
-#define CFG_MAGIC_HEADER "MFM01"
+#define CFG_MAGIC_HEADER      "MFM01"
 
 typedef struct {
     char magic[6];
@@ -15,7 +15,6 @@ typedef struct {
     uint8_t k_values[2];
 } eeprom_config_t;
 extern eeprom_config_t eeprom_config;
-
 
 #ifdef __cplusplus
 extern "C" {

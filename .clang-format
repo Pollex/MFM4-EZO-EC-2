@@ -1,1 +1,7 @@
 IndentWidth: 4
+ColumnLimit: 120
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveBitFields: Consecutive
+AlignConsecutiveMacros: Consecutive
+

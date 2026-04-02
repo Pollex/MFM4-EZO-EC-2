@@ -32,21 +32,21 @@ volatile struct __attribute__((packed)) {
     uint32_t conductivity_b;
     int16_t temperature_b;
     int16_t temperature_a;
-} wire_measurement = {0};
-kernel_pid_t main_thread_pid = 1;
+} wire_measurement                  = {0};
+static kernel_pid_t main_thread_pid = 1;
 
 // ==================================
 // Errors (bit flags for multiple failures)
 // ==================================
 typedef enum APP_ERROR {
-    ERR_NONE = 0,
-    ERR_SENSOR_INIT = (1 << 0),    // Sensor initialization failed
+    ERR_NONE           = 0,
+    ERR_SENSOR_INIT    = (1 << 0), // Sensor initialization failed
     ERR_TEMP_A_TRIGGER = (1 << 1), // Temperature A trigger failed
     ERR_TEMP_B_TRIGGER = (1 << 2), // Temperature B trigger failed
     ERR_CONDUCTIVITY_A = (1 << 3), // Conductivity probe A failed
     ERR_CONDUCTIVITY_B = (1 << 4), // Conductivity probe B failed
-    ERR_TEMP_A_READ = (1 << 5),    // Temperature A read failed
-    ERR_TEMP_B_READ = (1 << 6),    // Temperature B read failed
+    ERR_TEMP_A_READ    = (1 << 5), // Temperature A read failed
+    ERR_TEMP_B_READ    = (1 << 6), // Temperature B read failed
 } APP_ERROR;
 
 // ==================================
@@ -65,11 +65,11 @@ typedef enum APP_MSG {
 static int mfm_comm_sensor_init(void *arg);
 static int mfm_comm_perform_measurement(void *arg);
 static const mfm_comm_params_t mfm_comm_params = {
-    .firmware_version = FW_VERSION,
-    .module_type = 0xFF,
-    .measurement_time = 15000,
-    .sensor_count = 1,
-    .sensor_init_fn = &mfm_comm_sensor_init,
+    .firmware_version       = FW_VERSION,
+    .module_type            = 0xFF,
+    .measurement_time       = 15000,
+    .sensor_count           = 1,
+    .sensor_init_fn         = &mfm_comm_sensor_init,
     .perform_measurement_fn = &mfm_comm_perform_measurement,
 };
 static mfm_comm_t mfm_comm;
@@ -120,16 +120,16 @@ static int mfm_comm_perform_measurement(void *arg) {
 // ==================================
 
 static const shell_command_t shell_commands[] = {
-    {"provision", "Full provisioning sequence for EC Module board [A|B]",
-     cmd_provision},
-    {"measure", "Performs a full measurement", cmd_do_measurement},
-    {"export", "Exports the currently loaded configuration", cmd_config_export},
-    {"switch", "Switches the current active probe", cmd_switch_probe},
-    {"set_k", "Sets the K-Value for a probe", cmd_set_k},
-    {"save", "Saves the configuration to memory", cmd_save},
-    {"factory", "Clears all configuration and calibrations", cmd_factory_reset},
-    {"ec_cmd", "Debugging: send command to EZOEC module", cmd_ec_cmd},
-    {NULL, NULL, NULL},
+    {"provision", "Full provisioning sequence for EC Module board [A|B]", cmd_provision     },
+    {"measure",   "Performs a full measurement",                          cmd_do_measurement},
+    {"export",    "Exports the currently loaded configuration",           cmd_config_export },
+    {"switch",    "Switches the current active probe",                    cmd_switch_probe  },
+    {"set_k",     "Sets the K-Value for a probe",                         cmd_set_k         },
+    {"save",      "Saves the configuration to memory",                    cmd_save          },
+    {"factory",   "Clears all configuration and calibrations",            cmd_factory_reset },
+    {"ec_cmd",    "Debugging: send command to EZOEC module",              cmd_ec_cmd        },
+    {"boost",     "Enable or disable the 5V booster",                    cmd_boost         },
+    {NULL,        NULL,                                                   NULL              },
 };
 
 int main_shell(void) {
@@ -165,12 +165,6 @@ int should_boot_shell(void) {
 // Main routine
 // ==================================
 
-/*
- * The system's I2C is ready in about 1.10ms after poweron.
- * This is based on a GPIO SET after i2c_slave_init, on poweron the test pin
- * will show disparity to ground up until the GPIO_SET.
- */
-
 #define PIN_TEST GPIO_PIN(PORT_A, 15)
 static msg_t _msg_queue[8] = {0};
 int main(void) {
@@ -187,7 +181,6 @@ int main(void) {
     // Setup I2C with master.
     mfm_comm_init(&mfm_comm, mfm_comm_params);
 
-    // Duration: 0.35 ms
     config_init();
 
     printf("FWVER: %s\n", FW_VERSION);
@@ -209,10 +202,10 @@ int main(void) {
             DEBUG("Sensor measure\n");
 
             measurement_t measurement = {0};
-            uint8_t error_flags = ERR_NONE;
+            uint8_t error_flags       = ERR_NONE;
 
             sensors_enable();
-            ztimer_sleep(ZTIMER_MSEC, 10);
+            ztimer_sleep(ZTIMER_MSEC, 1000);
 
             int result = sensors_init();
             if (result < 0) {
@@ -237,8 +230,7 @@ int main(void) {
                 }
             }
             if (config_has_calibration(PROBE_A)) {
-                result = sensors_get_conductivity(PROBE_A,
-                                                  &measurement.conductivity_a);
+                result = sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
                 if (result < 0) {
                     DEBUG("ERR(%d) conduc A\n", result);
                     measurement.conductivity_a = 0;
@@ -246,8 +238,7 @@ int main(void) {
                 }
             }
             if (config_has_calibration(PROBE_B)) {
-                result = sensors_get_conductivity(PROBE_B,
-                                                  &measurement.conductivity_b);
+                result = sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
                 if (result < 0) {
                     DEBUG("ERR(%d) conduc B\n", result);
                     measurement.conductivity_b = 0;
@@ -255,8 +246,7 @@ int main(void) {
                 }
             }
             if (config_has_calibration(PROBE_A)) {
-                result = sensors_get_temperature(PROBE_A,
-                                                 &measurement.temperature_a);
+                result = sensors_get_temperature(PROBE_A, &measurement.temperature_a);
                 if (result < 0) {
                     DEBUG("ERR(%d) get temp A\n", result);
                     measurement.temperature_a = 0;
@@ -264,8 +254,7 @@ int main(void) {
                 }
             }
             if (config_has_calibration(PROBE_B)) {
-                result = sensors_get_temperature(PROBE_B,
-                                                 &measurement.temperature_b);
+                result = sensors_get_temperature(PROBE_B, &measurement.temperature_b);
                 if (result < 0) {
                     DEBUG("ERR(%d) get temp B\n", result);
                     measurement.temperature_b = 0;
@@ -281,11 +270,10 @@ int main(void) {
 
             wire_measurement.conductivity_a = measurement.conductivity_a;
             wire_measurement.conductivity_b = measurement.conductivity_b;
-            wire_measurement.temperature_a = measurement.temperature_a;
-            wire_measurement.temperature_b = measurement.temperature_b;
+            wire_measurement.temperature_a  = measurement.temperature_a;
+            wire_measurement.temperature_b  = measurement.temperature_b;
 
-            mfm_comm_measurement_finish(&mfm_comm, (void *)&wire_measurement,
-                                        sizeof(wire_measurement));
+            mfm_comm_measurement_finish(&mfm_comm, (void *)&wire_measurement, sizeof(wire_measurement));
         } break;
         case TASK_CLEAR_BOOT_MAGIC:
             PWR->CR |= PWR_CR_DBP;

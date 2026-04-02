@@ -13,17 +13,17 @@ extern "C" {
 extern ezoec_t ec;
 static const ezoec_params_t ec_params = {
     .baud_rate = 115200,
-    .uart = UART_DEV(1),
+    .uart      = UART_DEV(1),
 };
 
 extern ds18_t t1;
 static const ds18_params_t t1_params = {
-    .pin = DQ_A_PIN,
+    .pin      = DQ_A_PIN,
     .out_mode = GPIO_OD_PU,
 };
 extern ds18_t t2;
 static const ds18_params_t t2_params = {
-    .pin = DQ_B_PIN,
+    .pin      = DQ_B_PIN,
     .out_mode = GPIO_OD_PU,
 };
 

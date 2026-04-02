@@ -16,11 +16,14 @@ DEVELHELP ?= 1
 #SRCS = i2c.c main.c shell_.c
 
 GIT_HASH = $(shell git describe --tags --first-parent --dirty --always)
-CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(4*THREAD_STACKSIZE_DEFAULT\) -DFW_VERSION=\"$(GIT_HASH:-dirty=\*)\"
+CFLAGS += \
+			-DFW_VERSION=\"$(GIT_HASH:-dirty=\*)\" \
+			-DCONFIG_SKIP_BOOT_MSG=1
+			# -DTHREAD_STACKSIZE_MAIN=\(4*THREAD_STACKSIZE_DEFAULT\) \
 
 USEMODULE += shell
 # additional modules for debugging:
-USEMODULE += stdio_uart ztimer ztimer_msec core_thread_flags
+USEMODULE += ztimer ztimer_msec core_thread_flags
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom periph_i2c
 
 USEMODULE += ezoec ds18 mfm_comm

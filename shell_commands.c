@@ -44,10 +44,10 @@ static int switch_probe(uint8_t index) {
 #define STABLE_READING_SAMPLES 12
 static int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance_uS) {
     uint32_t readings[STABLE_READING_SAMPLES] = {0};
-    uint8_t total_readings = 0;
+    uint8_t total_readings                    = 0;
 
     uint32_t start = ztimer_now(ZTIMER_MSEC);
-    int result = 0;
+    int result     = 0;
     for (;;) {
         //
         // Check if we've reached timeout limit
@@ -57,8 +57,7 @@ static int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance_uS) {
 
         //
         // Get a new measurement
-        result = ezoec_measure(
-            &ec, &readings[total_readings % STABLE_READING_SAMPLES]);
+        result = ezoec_measure(&ec, &readings[total_readings % STABLE_READING_SAMPLES]);
         if (result < 0) {
             return result; // Return the error code
         }
@@ -75,10 +74,8 @@ static int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance_uS) {
 
         //
         // Calculate Standard Deviation
-        uint8_t sample_count = total_readings < STABLE_READING_SAMPLES
-                                   ? total_readings
-                                   : STABLE_READING_SAMPLES;
-        uint32_t mean = 0;
+        uint8_t sample_count = total_readings < STABLE_READING_SAMPLES ? total_readings : STABLE_READING_SAMPLES;
+        uint32_t mean        = 0;
         for (int i = 0; i < sample_count; i++) {
             mean += readings[i];
         }
@@ -91,8 +88,8 @@ static int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance_uS) {
         }
         variance /= sample_count;
 
-        printf("Mean: %ld\tVariance²: %6ld\nMax variance² allowed: %6ld\n",
-               mean, variance, tolerance_uS * tolerance_uS);
+        printf("Mean: %ld\tVariance²: %6ld\nMax variance² allowed: %6ld\n", mean, variance,
+               tolerance_uS * tolerance_uS);
 
         // Validate
         if (variance < tolerance_uS * tolerance_uS) {
@@ -113,8 +110,8 @@ static int32_t _read_int(uint8_t precision) {
     static char rx_buffer[rx_buffer_size] = {0};
 
     char *ptr_start = rx_buffer;
-    char *ptr_end = ptr_start; // will be incremented during reading
-    char *ptr = ptr_start;
+    char *ptr_end   = ptr_start; // will be incremented during reading
+    char *ptr       = ptr_start;
 
     uint8_t c = 0;
     for (;;) {
@@ -132,7 +129,7 @@ static int32_t _read_int(uint8_t precision) {
     }
 
     // Convert to int
-    int32_t value = 0;
+    int32_t value    = 0;
     uint8_t decimals = 0;
     while (ptr < ptr_end) {
         if (*ptr == '.') {
@@ -156,8 +153,8 @@ static int32_t _read_int(uint8_t precision) {
 static int32_t _read_mS(void) { return _read_int(3); }
 static int32_t _read_kvalue(void) { return _read_int(1); }
 
-#define CAL_TOLERANCE_DRY_uS 1000
-#define CAL_TOLERANCE_LOW_uS 1000
+#define CAL_TOLERANCE_DRY_uS  1000
+#define CAL_TOLERANCE_LOW_uS  1000
 #define CAL_TOLERANCE_HIGH_uS 1000
 int cmd_provision(int argc, char **argv) {
     int calibrate_a = 1;
@@ -177,7 +174,7 @@ int cmd_provision(int argc, char **argv) {
     puts("1. Fixing EZOEC configuration");
     ezoec_params_t params = {
         .baud_rate = 9600,
-        .uart = UART_DEV(1),
+        .uart      = UART_DEV(1),
     };
     int result = ezoec_init(&ec, &params);
     if (result < 0) {
@@ -241,15 +238,16 @@ int cmd_provision(int argc, char **argv) {
     }
 
     for (int probe = 0; probe < 2; probe++) {
-        if (probe == PROBE_A && !calibrate_a) continue;
-        if (probe == PROBE_B && !calibrate_b) continue;
+        if (probe == PROBE_A && !calibrate_a)
+            continue;
+        if (probe == PROBE_B && !calibrate_b)
+            continue;
         printf("Switching to probe: %c (K: %s)\n", probe == 0 ? 'A' : 'B',
                _int_to_string(eeprom_config.k_values[probe], 1, NULL));
         switch_probe(probe);
         result = ezoec_set_k(&ec, eeprom_config.k_values[probe]);
         if (result < 0) {
-            printf("There are issues setting the K value (error %d).\n",
-                   result);
+            printf("There are issues setting the K value (error %d).\n", result);
             return result;
         }
     retry_dry:
@@ -273,8 +271,7 @@ int cmd_provision(int argc, char **argv) {
         }
 
     retry_low:
-        printf("5%c.1: Low calibration. Put probe in low mS solution.\n",
-               probe == 0 ? 'A' : 'B');
+        printf("5%c.1: Low calibration. Put probe in low mS solution.\n", probe == 0 ? 'A' : 'B');
         puts("Solution concentration in mS: ");
         // We ask the user for mS with max 3 decimals so store as uS
         uint32_t uS = _read_mS();
@@ -294,8 +291,7 @@ int cmd_provision(int argc, char **argv) {
         }
 
     retry_high:
-        printf("6%c.1: High calibration. Put probe in high uS solution.\n",
-               probe == 0 ? 'A' : 'B');
+        printf("6%c.1: High calibration. Put probe in high uS solution.\n", probe == 0 ? 'A' : 'B');
         puts("Solution concentration in mS: ");
         uS = _read_mS();
         printf("Calibrating for: %s mS\n", _int_to_string(uS, 3, NULL));
@@ -313,8 +309,7 @@ int cmd_provision(int argc, char **argv) {
             return result;
         }
 
-        printf("7%c.1: Calibration done, exporting calibration values...",
-               probe == 0 ? 'A' : 'B');
+        printf("7%c.1: Calibration done, exporting calibration values...", probe == 0 ? 'A' : 'B');
         result = ezoec_cal_export(&ec, &eeprom_config.calibration[probe]);
         if (result < 0) {
             printf("Could not export calibration: %d\n", result);
@@ -343,7 +338,7 @@ int cmd_ec_cmd(int argc, char **argv) {
 
     ezoec_writeline(&ec, argv[1]);
     char buf[RX_MAX_LINE_LEN] = {0};
-    int result = 0;
+    int result                = 0;
     for (;;) {
         result = ezoec_readline(&ec, buf, RX_MAX_LINE_LEN, 1000);
         if (result < 0)
@@ -395,8 +390,7 @@ int cmd_do_measurement(int argc, char **argv) {
            "           Conductivity        Temperature \n"
            "PROBE A    %s uS                %s C       \n"
            "PROBE B    %s uS                %s C       \n",
-           _int_to_string(measurement.conductivity_a, 3, buf),
-           _int_to_string(measurement.temperature_a, 2, buf + 20),
+           _int_to_string(measurement.conductivity_a, 3, buf), _int_to_string(measurement.temperature_a, 2, buf + 20),
            _int_to_string(measurement.conductivity_b, 3, buf + 40),
            _int_to_string(measurement.temperature_b, 2, buf + 60));
 
@@ -414,12 +408,10 @@ int cmd_config_export(int argc, char **argv) {
     (void)argv;
 
     puts("=============== PROBE A ===================");
-    printf("K-Value: %s\nCalibration: ",
-           _int_to_string(eeprom_config.k_values[PROBE_A], 1, NULL));
+    printf("K-Value: %s\nCalibration: ", _int_to_string(eeprom_config.k_values[PROBE_A], 1, NULL));
     _print_ezoec_calibration(&eeprom_config.calibration[PROBE_A]);
     puts("\n\n============== PROBE B ====================");
-    printf("K-Value: %s\nCalibration: ",
-           _int_to_string(eeprom_config.k_values[PROBE_B], 1, NULL));
+    printf("K-Value: %s\nCalibration: ", _int_to_string(eeprom_config.k_values[PROBE_B], 1, NULL));
     _print_ezoec_calibration(&eeprom_config.calibration[PROBE_B]);
     puts("\n");
 
@@ -465,9 +457,7 @@ int cmd_set_k(int argc, char **argv) {
     (void)argv;
 
     if (argc < 3) {
-        printf(
-            "Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n",
-            argv[0]);
+        printf("Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n", argv[0]);
         return 0;
     }
 
@@ -477,9 +467,7 @@ int cmd_set_k(int argc, char **argv) {
     } else if (argv[1][0] == 'b' || argv[1][0] == 'B') {
         probe = PROBE_B;
     } else {
-        printf(
-            "Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n",
-            argv[0]);
+        printf("Usage: %s <A/B> <K_Value>\nThe K value can have up to 1 decimal\n", argv[0]);
         return 0;
     }
 
@@ -501,6 +489,26 @@ int cmd_factory_reset(int argc, char **argv) {
 
     config_clear();
     puts("Config cleared, use the `save` command to save the empty config");
+
+    return 0;
+}
+
+int cmd_boost(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: %s <on|off>\n", argv[0]);
+        return -1;
+    }
+
+    if (strcmp(argv[1], "on") == 0) {
+        sensors_enable();
+        puts("Booster enabled");
+    } else if (strcmp(argv[1], "off") == 0) {
+        sensors_disable();
+        puts("Booster disabled");
+    } else {
+        printf("Usage: %s <on|off>\n", argv[0]);
+        return -1;
+    }
 
     return 0;
 }
