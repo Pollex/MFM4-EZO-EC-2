@@ -225,11 +225,15 @@ int ezoec_cal_import(ezoec_t *ec, ezoec_calibration_t *cal) {
 int ezoec_cal_export(ezoec_t *ec, ezoec_calibration_t *cal) {
     int result                                       = 0;
     char rxBuffer[EZOEC_CALIBRATION_LINE_LENGTH + 1] = {0};
+    // Loop one extra iteration to consume the trailing *DONE line.
     for (int line = 0; line < EZOEC_CALIBRATION_MAX_LINES + 1; line++) {
         result = ezoec_cmd(ec, 1000, rxBuffer, "Export");
         if (result < 0) {
             DEBUG("[%s]: Error reading export: %d\n", __func__, result);
             return result;
+        }
+        if (result > EZOEC_CALIBRATION_LINE_LENGTH) {
+            result = EZOEC_CALIBRATION_LINE_LENGTH;
         }
         rxBuffer[result] = 0;
 
@@ -239,6 +243,11 @@ int ezoec_cal_export(ezoec_t *ec, ezoec_calibration_t *cal) {
             return line;
         }
 
+        // Bounds-check before writing into the fixed-size calibration array.
+        if (line >= EZOEC_CALIBRATION_MAX_LINES) {
+            DEBUG("[%s]: Too many export lines, no *DONE seen\n", __func__);
+            return -EOVERFLOW;
+        }
         memcpy(cal->line[line], rxBuffer, result);
     }
     return -1;
