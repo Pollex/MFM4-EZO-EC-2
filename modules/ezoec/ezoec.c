@@ -374,21 +374,20 @@ read_status:
 }
 
 char *_int_to_string(uint8_t k, uint8_t precision) {
-    enum { buf_len = 10 };
+    enum { buf_len = 12 };
     static char buf[buf_len + 1] = {0};
     char *ptr                    = &buf[buf_len - 1];
 
     int decimals = 0;
-    while (k > 0) {
-        char decimal = 0x30 + (k % 10);
+    do {
+        *ptr-- = 0x30 + (k % 10);
         k /= 10;
-
-        *ptr-- = decimal;
         if (++decimals == precision) {
             *ptr-- = '.';
             if (k == 0)
                 *ptr-- = '0';
         }
-    }
+    } while (k > 0 || decimals < precision);
+
     return ptr + 1;
 }
