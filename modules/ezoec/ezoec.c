@@ -261,6 +261,9 @@ int ezoec_writeline(ezoec_t *ec, const char *format, ...) {
     va_start(args, format);
     int len = vsnprintf(txbuf, sizeof(txbuf) - 1, format, args);
     va_end(args);
+    if (len < 0 || (size_t)len >= sizeof(txbuf) - 1) {
+        return -EOVERFLOW;
+    }
     txbuf[len++] = '\r';
     tsrb_clear(&ec->rx_ringbuffer);
     uart_write(DEV, (uint8_t *)txbuf, len);
@@ -275,6 +278,9 @@ int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format, ...)
     va_start(args, format);
     int len = vsnprintf(txbuf, sizeof(txbuf) - 1, format, args);
     va_end(args);
+    if (len < 0 || (size_t)len >= sizeof(txbuf) - 1) {
+        return -EOVERFLOW;
+    }
     txbuf[len++] = '\r';
 
     tsrb_clear(&ec->rx_ringbuffer);
