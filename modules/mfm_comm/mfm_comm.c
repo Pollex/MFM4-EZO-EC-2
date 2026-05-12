@@ -246,7 +246,7 @@ int read_error_count(mfm_comm_t *comm, uint8_t *data) {
 
 int read_error_status(mfm_comm_t *comm, uint8_t *data) {
     if (comm->get_app_error > 0) {
-        data[0]             = comm->error;
+        data[0]             = comm->app_error;
         comm->get_app_error = 0;
 
         return 1;
