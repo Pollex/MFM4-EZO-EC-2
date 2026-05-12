@@ -473,14 +473,14 @@ int cmd_provision(int argc, char **argv) {
     }
     puts("Factory reset EZOEC");
     // Disable continuous mode
-    result = ezoec_cmd(&ec, 0, NULL, "C,0");
+    result = ezoec_cmd(&ec, 0, NULL, 0, "C,0");
     if (result < 0) {
         printf("Could not disable continuous mode: %d\n", result);
         return result;
     }
     puts("Disabled EZOEC continuous reading");
     // Disable LED
-    result = ezoec_cmd(&ec, 0, NULL, "L,0");
+    result = ezoec_cmd(&ec, 0, NULL, 0, "L,0");
     if (result < 0) {
         printf("Could not disable LED: %d\n", result);
         return result;

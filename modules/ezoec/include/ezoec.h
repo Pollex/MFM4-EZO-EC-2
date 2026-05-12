@@ -48,7 +48,7 @@ int ezoec_cal_export(ezoec_t *ec, ezoec_calibration_t *cal);
 int ezoec_writeline(ezoec_t *ec, const char *format, ...);
 int ezoec_readline(ezoec_t *ec, char *buf, uint8_t buf_len, uint32_t timeout);
 int ezoec_assert_ok(ezoec_t *ec);
-int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format, ...);
+int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, uint8_t out_len, const char *format, ...);
 
 #ifdef __cplusplus
 } /* extern "C" */

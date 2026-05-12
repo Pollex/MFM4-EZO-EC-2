@@ -89,7 +89,7 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     ezoec_assert_ok(ec);
 
     char version[15] = {0};
-    result           = ezoec_cmd(ec, 500, version, "i");
+    result           = ezoec_cmd(ec, 500, version, sizeof(version), "i");
     if (result < 0) {
         DEBUG("[%s]: Could not get version: %d\n", __func__, result);
         return result;
@@ -107,7 +107,7 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     return 0;
 }
 
-int ezoec_set_baud(ezoec_t *ec, unsigned int baud) { return ezoec_cmd(ec, 0, NULL, "Baud,%d", baud); }
+int ezoec_set_baud(ezoec_t *ec, unsigned int baud) { return ezoec_cmd(ec, 0, NULL, 0, "Baud,%d", baud); }
 
 int ezoec_factory(ezoec_t *ec) {
     uart_write(DEV, (const uint8_t *)"Factory\r", sizeof("Factory\r"));
@@ -134,11 +134,13 @@ int ezoec_factory(ezoec_t *ec) {
     return 0;
 }
 
-int ezoec_set_k(ezoec_t *ec, uint8_t k_value) { return ezoec_cmd(ec, 0, NULL, "K,%s", _int_to_string(k_value, 1)); }
+int ezoec_set_k(ezoec_t *ec, uint8_t k_value) {
+    return ezoec_cmd(ec, 0, NULL, 0, "K,%s", _int_to_string(k_value, 1));
+}
 
 int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
     char rx[RX_MAX_LINE_LEN] = {0};
-    int rx_len               = ezoec_cmd(ec, 2000, rx, "R");
+    int rx_len               = ezoec_cmd(ec, 2000, rx, sizeof(rx), "R");
     if (rx_len < 0) {
         return rx_len;
     }
@@ -184,23 +186,23 @@ int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
 
 int ezoec_is_calibrated(ezoec_t *ec) {
     char rx[RX_MAX_LINE_LEN] = {0};
-    int result               = ezoec_cmd(ec, 100, rx, "Cal,?");
+    int result               = ezoec_cmd(ec, 100, rx, sizeof(rx), "Cal,?");
     if (result < 0) {
         return result;
     }
     return rx[5] - 0x30;
 }
 
-int ezoec_cal_dry(ezoec_t *ec) { return ezoec_cmd(ec, 0, NULL, "Cal,dry"); }
+int ezoec_cal_dry(ezoec_t *ec) { return ezoec_cmd(ec, 0, NULL, 0, "Cal,dry"); }
 
-int ezoec_cal_low(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, "Cal,low,%d", uS); }
+int ezoec_cal_low(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, 0, "Cal,low,%d", uS); }
 
-int ezoec_cal_high(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, "Cal,high,%d", uS); }
+int ezoec_cal_high(ezoec_t *ec, uint32_t uS) { return ezoec_cmd(ec, 0, NULL, 0, "Cal,high,%d", uS); }
 
 int ezoec_cal_import(ezoec_t *ec, ezoec_calibration_t *cal) {
     int result = 0;
     for (int line = 0; line < EZOEC_CALIBRATION_MAX_LINES; line++) {
-        result = ezoec_cmd(ec, 0, NULL, "Import,%.12s", cal->line[line]);
+        result = ezoec_cmd(ec, 0, NULL, 0, "Import,%.12s", cal->line[line]);
         if (result < 0) {
             DEBUG("[%s]: Error importing: %d\n", __func__, result);
             return result;
@@ -239,7 +241,7 @@ int ezoec_cal_export(ezoec_t *ec, ezoec_calibration_t *cal) {
     char rxBuffer[EZOEC_CALIBRATION_LINE_LENGTH + 1] = {0};
     // Loop one extra iteration to consume the trailing *DONE line.
     for (int line = 0; line < EZOEC_CALIBRATION_MAX_LINES + 1; line++) {
-        result = ezoec_cmd(ec, 1000, rxBuffer, "Export");
+        result = ezoec_cmd(ec, 1000, rxBuffer, sizeof(rxBuffer), "Export");
         if (result < 0) {
             DEBUG("[%s]: Error reading export: %d\n", __func__, result);
             return result;
@@ -283,7 +285,7 @@ int ezoec_writeline(ezoec_t *ec, const char *format, ...) {
     return 0;
 }
 
-int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format, ...) {
+int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, uint8_t out_len, const char *format, ...) {
     static char txbuf[TX_MAX_LINE_LEN] = {0};
 
     va_list args;
@@ -305,7 +307,7 @@ int ezoec_cmd(ezoec_t *ec, uint32_t timeout, char *out, const char *format, ...)
     // Only if out is given will we read a response
     int rx_len = 0;
     if (out != NULL) {
-        rx_len = ezoec_readline(ec, out, RX_MAX_LINE_LEN, timeout);
+        rx_len = ezoec_readline(ec, out, out_len, timeout);
         if (rx_len < 0)
             return rx_len;
     }
