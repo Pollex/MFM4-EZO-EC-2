@@ -143,26 +143,38 @@ int ezoec_measure(ezoec_t *ec, uint32_t *out_nS) {
         return rx_len;
     }
 
-    // Convert to int
+    // Convert to int. Stop at first non-digit/non-dot so multi-field
+    // responses (e.g. "100,54" when TDS is enabled) don't corrupt the
+    // value by adding negative ASCII offsets to an unsigned accumulator.
     char *ptr_start = rx;
     char *ptr_end   = ptr_start + rx_len;
     char *ptr       = ptr_start;
+    char *dot       = NULL;
 
-    //
-    *out_nS          = 0;
-    uint8_t decimals = 0;
+    *out_nS = 0;
     while (ptr < ptr_end) {
         if (*ptr == '.') {
-            decimals = ptr_end - ptr - 1;
+            if (dot != NULL) {
+                return -EINVAL; // Second dot — malformed.
+            }
+            dot = ptr;
             ptr++;
             continue;
+        }
+        if (*ptr < '0' || *ptr > '9') {
+            break;
         }
 
         *out_nS *= 10;
         *out_nS += (*ptr - 0x30);
         ptr++;
     }
-    // Correct for potential missing decimals
+    if (ptr == ptr_start) {
+        return -EINVAL; // No digits parsed.
+    }
+
+    // Pad missing fractional digits to MAX_DECIMALS.
+    uint8_t decimals = (dot == NULL) ? 0 : (uint8_t)(ptr - dot - 1);
     for (int x = MAX_DECIMALS - decimals; x > 0; x--) {
         *out_nS *= 10;
     }
