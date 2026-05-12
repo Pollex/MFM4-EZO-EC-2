@@ -12,6 +12,7 @@
 #include "shell.h"
 #include "stm32l010x6.h"
 #include "thread.h"
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -352,27 +353,22 @@ static int wait_for_stable_readings(uint32_t timeout, uint32_t tolerance_uS) {
         }
 
         //
-        // Calculate Standard Deviation
-        uint8_t sample_count = total_readings < STABLE_READING_SAMPLES ? total_readings : STABLE_READING_SAMPLES;
-        uint32_t mean        = 0;
-        for (int i = 0; i < sample_count; i++) {
-            mean += readings[i];
+        // Check spread (max - min) across the buffered window.
+        uint32_t min = readings[0];
+        uint32_t max = readings[0];
+        for (int i = 1; i < STABLE_READING_SAMPLES; i++) {
+            if (readings[i] < min)
+                min = readings[i];
+            if (readings[i] > max)
+                max = readings[i];
         }
-        mean /= sample_count;
+        uint32_t spread = max - min;
 
-        uint32_t variance = 0;
-        for (int i = 0; i < sample_count; i++) {
-            int32_t deviation = readings[i] - mean;
-            variance += deviation * deviation; // Square the deviation
-        }
-        variance /= sample_count;
+        printf("Min: %" PRIu32 "\tMax: %" PRIu32 "\tSpread: %" PRIu32 " uS\tTolerance: %" PRIu32 " uS\n", min, max,
+               spread, tolerance_uS);
 
-        printf("Mean: %ld\tVariance²: %6ld\nMax variance² allowed: %6ld\n", mean, variance,
-               tolerance_uS * tolerance_uS);
-
-        // Validate
-        if (variance < tolerance_uS * tolerance_uS) {
-            return 0; // Return 0 on stable readings
+        if (spread <= tolerance_uS) {
+            return 0; // Stable
         }
     }
 
