@@ -1,6 +1,6 @@
 #include "board.h"
 #include "config.h"
-#include "ds18.h"
+#include "ds18_local.h"
 #include "ezoec.h"
 #include "mfm_comm.h"
 #include "msg.h"
@@ -8,6 +8,7 @@
 #include "periph/eeprom.h"
 #include "periph/gpio.h"
 #include "periph/uart.h"
+#include "irq.h"
 #include "sched.h"
 #include "shell.h"
 #include "stm32l010x6.h"
@@ -16,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/unistd.h>
 #include <ztimer.h>
 #define ENABLE_DEBUG 0
@@ -287,6 +289,76 @@ int sensors_get_conductivity(probe_t probe, uint32_t *out) {
         return result;
     }
 
+    return 0;
+}
+
+static int perform_measurement(measurement_t *m, uint8_t *error_flags) {
+    *error_flags = ERR_NONE;
+    memset(m, 0, sizeof(*m));
+
+    sensors_enable();
+    ztimer_sleep(ZTIMER_MSEC, 1000);
+
+    int result = sensors_init();
+    if (result < 0) {
+        DEBUG("ERR(%d) sensors init\n", result);
+        sensors_disable();
+        *error_flags |= ERR_SENSOR_INIT;
+        return result;
+    }
+
+    // Trigger temperature conversions first so they run in parallel with the
+    // (slower) EC measurement.
+    if (config_has_calibration(PROBE_A)) {
+        result = sensors_trigger_temperature(PROBE_A);
+        if (result < 0) {
+            DEBUG("ERR(%d) trigger temp A\n", result);
+            *error_flags |= ERR_TEMP_A_TRIGGER;
+        }
+    }
+    if (config_has_calibration(PROBE_B)) {
+        result = sensors_trigger_temperature(PROBE_B);
+        if (result < 0) {
+            DEBUG("ERR(%d) trigger temp B\n", result);
+            *error_flags |= ERR_TEMP_B_TRIGGER;
+        }
+    }
+
+    if (config_has_calibration(PROBE_A)) {
+        result = sensors_get_conductivity(PROBE_A, &m->conductivity_a);
+        if (result < 0) {
+            DEBUG("ERR(%d) conduc A\n", result);
+            m->conductivity_a = 0;
+            *error_flags |= ERR_CONDUCTIVITY_A;
+        }
+    }
+    if (config_has_calibration(PROBE_B)) {
+        result = sensors_get_conductivity(PROBE_B, &m->conductivity_b);
+        if (result < 0) {
+            DEBUG("ERR(%d) conduc B\n", result);
+            m->conductivity_b = 0;
+            *error_flags |= ERR_CONDUCTIVITY_B;
+        }
+    }
+
+    if (config_has_calibration(PROBE_A)) {
+        result = sensors_get_temperature(PROBE_A, &m->temperature_a);
+        if (result < 0) {
+            DEBUG("ERR(%d) get temp A\n", result);
+            m->temperature_a = 0;
+            *error_flags |= ERR_TEMP_A_READ;
+        }
+    }
+    if (config_has_calibration(PROBE_B)) {
+        result = sensors_get_temperature(PROBE_B, &m->temperature_b);
+        if (result < 0) {
+            DEBUG("ERR(%d) get temp B\n", result);
+            m->temperature_b = 0;
+            *error_flags |= ERR_TEMP_B_READ;
+        }
+    }
+
+    sensors_disable();
     return 0;
 }
 
@@ -630,40 +702,12 @@ int cmd_do_measurement(int argc, char **argv) {
     (void)argv;
 
     measurement_t measurement = {0};
+    uint8_t error_flags       = ERR_NONE;
 
-    sensors_enable();
-    ztimer_sleep(ZTIMER_MSEC, 1000);
-
-    puts("Triggering temperature sensors");
-    int result = sensors_trigger_temperature(PROBE_A);
-    if (result < 0) {
-        printf("ERR(%d) trigger temp A\n", result);
+    perform_measurement(&measurement, &error_flags);
+    if (error_flags != ERR_NONE) {
+        printf("ERR: %02X\n", error_flags);
     }
-    result = sensors_trigger_temperature(PROBE_B);
-    if (result < 0) {
-        printf("ERR(%d) trigger temp B\n", result);
-    }
-    puts("Measuring conductivity on probe A");
-    result = sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
-    if (result < 0) {
-        printf("ERR(%d) conduc A\n", result);
-    }
-    puts("Measuring conductivity on probe B");
-    result = sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
-    if (result < 0) {
-        printf("ERR(%d) conduc B\n", result);
-    }
-    puts("Reading temperature sensors");
-    result = sensors_get_temperature(PROBE_A, &measurement.temperature_a);
-    if (result < 0) {
-        printf("ERR(%d) get temp A\n", result);
-    }
-    result = sensors_get_temperature(PROBE_B, &measurement.temperature_b);
-    if (result < 0) {
-        printf("ERR(%d) get temp B\n", result);
-    }
-
-    sensors_disable();
 
     char buf[20 * 4 + 1] = {0};
     printf("===========================================\n"
@@ -818,7 +862,7 @@ int cmd_temp(int argc, char **argv) {
         printf("Error trig B: %d\n", status);
     }
 
-    ztimer_sleep(ZTIMER_MSEC, 750);
+    ztimer_sleep(ZTIMER_MSEC, 1000);
 
     status = ds18_read(&t1, &out_a);
     if (status < 0) {
@@ -835,6 +879,97 @@ int cmd_temp(int argc, char **argv) {
     return 0;
 }
 
+/* test 1 — raw cycle-burn calibration: toggle DQ_B_PIN with <loops>
+ * iterations of the asm loop between each edge. */
+static int test_cycle_burn(int argc, char **argv) {
+    if (argc < 1) {
+        printf("Usage: test 1 <loops> [edges]\n");
+        printf("  Toggles DQ_B_PIN, burning <loops> iterations between each edge.\n");
+        printf("  <loops>=0 gives the baseline (toggle + overhead only).\n");
+        printf("  [edges] default 2000 (=1000 full periods).\n");
+        return 1;
+    }
+    uint32_t loops = (uint32_t)atoi(argv[0]);
+    uint32_t edges = (argc >= 2) ? (uint32_t)atoi(argv[1]) : 2000;
+
+    gpio_init(DQ_B_PIN, GPIO_OUT);
+    gpio_clear(DQ_B_PIN);
+
+    unsigned irq = irq_disable();
+    if (loops == 0) {
+        for (uint32_t i = 0; i < edges; i++) {
+            gpio_set(DQ_B_PIN);
+            gpio_clear(DQ_B_PIN);
+        }
+    } else {
+        for (uint32_t i = 0; i < edges; i += 2) {
+            gpio_set(DQ_B_PIN);
+            ds18_burn_loops(loops);
+            gpio_clear(DQ_B_PIN);
+            ds18_burn_loops(loops);
+        }
+    }
+    irq_restore(irq);
+
+    gpio_init(DQ_B_PIN, GPIO_IN);
+    printf("Done: %lu edges with %lu loops each\n",
+           (unsigned long)edges, (unsigned long)loops);
+    return 0;
+}
+
+/* Single pulse: rising edge, DS18_DELAY_US(us) high, falling edge.
+ * `us` must be a compile-time constant so the loop count folds. */
+#define VALIDATE_DELAY(us)                                                     \
+    do {                                                                       \
+        gpio_set(DQ_B_PIN);                                                    \
+        DS18_DELAY_US(us);                                                     \
+        gpio_clear(DQ_B_PIN);                                                  \
+    } while (0)
+
+/* test 2 — validate DS18_DELAY_US against the datasheet timings.
+ * Emits one high pulse per delay value with a long low gap between them. */
+static int test_delay_validate(int argc, char **argv) {
+    (void)argc; (void)argv;
+
+    printf("Validating DS18_DELAY_US on DQ_B_PIN.\n");
+    printf("One pulse each, high times: 1, 10, 60, 480 us.\n");
+    printf("Pulses separated by a ~5 ms low gap.\n");
+
+    gpio_init(DQ_B_PIN, GPIO_OUT);
+    gpio_clear(DQ_B_PIN);
+
+    unsigned irq = irq_disable();
+    VALIDATE_DELAY(5);
+    VALIDATE_DELAY(15);
+    VALIDATE_DELAY(50);
+    VALIDATE_DELAY(400);
+    irq_restore(irq);
+
+    ztimer_sleep(ZTIMER_MSEC, 1);
+
+    gpio_init(DQ_B_PIN, GPIO_IN);
+    printf("Done.\n");
+    return 0;
+}
+
+int cmd_test(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: test <n> [args...]\n");
+        printf("  1 <loops> [edges]   Cycle-burn calibration toggle on DQ_B_PIN.\n");
+        printf("  2                   Validate DS18_DELAY_US (1/10/60/480 us pulses).\n");
+        return 1;
+    }
+    int n = atoi(argv[1]);
+    /* Shift argv so each handler sees its own args starting at argv[0]. */
+    switch (n) {
+        case 1: return test_cycle_burn(argc - 2, argv + 2);
+        case 2: return test_delay_validate(argc - 2, argv + 2);
+        default:
+            printf("Unknown test: %d\n", n);
+            return 1;
+    }
+}
+
 static const shell_command_t shell_commands[] = {
     {"provision", "Full provisioning sequence for EC Module board [A|B]", cmd_provision     },
     {"measure",   "Performs a full measurement",                          cmd_do_measurement},
@@ -846,6 +981,7 @@ static const shell_command_t shell_commands[] = {
     {"ec_cmd",    "Debugging: send command to EZOEC module",              cmd_ec_cmd        },
     {"boost",     "Enable or disable the 5V booster",                     cmd_boost         },
     {"temp",      "Get temperature",                                      cmd_temp          },
+    {"test",      "Run a test: test <n> (1=cycle burn, 2=delay validate)", cmd_test },
     {NULL,        NULL,                                                   NULL              },
 };
 
@@ -919,72 +1055,12 @@ int main(void) {
             measurement_t measurement = {0};
             uint8_t error_flags       = ERR_NONE;
 
-            sensors_enable();
-            ztimer_sleep(ZTIMER_MSEC, 1000);
+            perform_measurement(&measurement, &error_flags);
 
-            int result = sensors_init();
-            if (result < 0) {
-                DEBUG("ERR(%d) sensors init\n", result);
-                sensors_disable();
+            if (error_flags & ERR_SENSOR_INIT) {
                 mfm_comm_measurement_error(&mfm_comm, ERR_SENSOR_INIT);
                 break;
             }
-
-            if (config_has_calibration(PROBE_A)) {
-                result = ds18_trigger(&t1);
-                if (result < 0) {
-                    DEBUG("ERR(%d) trigger temp A\n", result);
-                    error_flags |= ERR_TEMP_A_TRIGGER;
-                }
-            }
-            if (config_has_calibration(PROBE_B)) {
-                result = ds18_trigger(&t2);
-                if (result < 0) {
-                    DEBUG("ERR(%d) trigger temp B\n", result);
-                    error_flags |= ERR_TEMP_B_TRIGGER;
-                }
-            }
-            ztimer_now_t t_start = ztimer_now(ZTIMER_MSEC);
-
-            if (config_has_calibration(PROBE_A)) {
-                result = sensors_get_conductivity(PROBE_A, &measurement.conductivity_a);
-                if (result < 0) {
-                    DEBUG("ERR(%d) conduc A\n", result);
-                    measurement.conductivity_a = 0;
-                    error_flags |= ERR_CONDUCTIVITY_A;
-                }
-            }
-            if (config_has_calibration(PROBE_B)) {
-                result = sensors_get_conductivity(PROBE_B, &measurement.conductivity_b);
-                if (result < 0) {
-                    DEBUG("ERR(%d) conduc B\n", result);
-                    measurement.conductivity_b = 0;
-                    error_flags |= ERR_CONDUCTIVITY_B;
-                }
-            }
-
-            ztimer_acquire(ZTIMER_MSEC);
-            ztimer_periodic_wakeup(ZTIMER_MSEC, &t_start, 750);
-            ztimer_release(ZTIMER_MSEC);
-            if (config_has_calibration(PROBE_A)) {
-                result = ds18_read(&t1, &measurement.temperature_a);
-                if (result < 0) {
-                    DEBUG("ERR(%d) get temp A\n", result);
-                    measurement.temperature_a = 0;
-                    error_flags |= ERR_TEMP_A_READ;
-                }
-            }
-            if (config_has_calibration(PROBE_B)) {
-                result = ds18_read(&t2, &measurement.temperature_b);
-                if (result < 0) {
-                    DEBUG("ERR(%d) get temp B\n", result);
-                    measurement.temperature_b = 0;
-                    error_flags |= ERR_TEMP_B_READ;
-                }
-            }
-            sensors_disable();
-
-            // Report any errors.
             if (error_flags != ERR_NONE) {
                 printf("ERR: %02X\n", error_flags);
                 mfm_comm_measurement_error(&mfm_comm, error_flags);

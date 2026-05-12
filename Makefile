@@ -23,10 +23,10 @@ CFLAGS += \
 
 USEMODULE += shell
 # additional modules for debugging:
-USEMODULE += ztimer ztimer_msec core_thread_flags
+USEMODULE += ztimer ztimer_usec ztimer_msec core_thread_flags
 FEATURES_REQUIRED += periph_gpio periph_uart periph_lpuart periph_eeprom periph_i2c
 
-USEMODULE += ezoec ds18 mfm_comm
+USEMODULE += ezoec ds18_local ds18_optimized mfm_comm
 # Change this to 0 show compiler invocation lines by default:
 QUIET ?= 1
 
