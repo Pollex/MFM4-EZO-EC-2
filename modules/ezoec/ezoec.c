@@ -96,11 +96,11 @@ int ezoec_init(ezoec_t *ec, const ezoec_params_t *params) {
     }
     if (result < 5) {
         DEBUG("[%s]: Not enough rx to be version info: %d\n", __func__, result);
-        return result;
+        return -ENODEV;
     }
     if (version[3] != 'E' || version[4] != 'C') {
         DEBUG("[%s]: does not appear to be EC device: %s\n", __func__, version);
-        return result;
+        return -ENODEV;
     }
 
     DEBUG("[%s]: Init success\n", __func__);
